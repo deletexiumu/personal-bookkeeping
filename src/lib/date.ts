@@ -43,3 +43,9 @@ export function formatDayLabel(date: string, todayDate: string = today()): strin
 export function nowTime(now: Date = new Date()): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
+
+/** 日期加减天数，例如 shiftDate('2026-11-01', -1) -> '2026-10-31' */
+export function shiftDate(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return today(new Date(y, m - 1, d + days))
+}

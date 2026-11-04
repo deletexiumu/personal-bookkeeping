@@ -24,9 +24,9 @@ describe('App', () => {
     expect(within(sidebar).getByRole('link', { name: '明细' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('navigation', { name: '底部导航' })).toBeInTheDocument()
 
-    await user.click(within(sidebar).getByRole('link', { name: '导入' }))
-    expect(await screen.findByRole('heading', { level: 1, name: '导入' })).toBeInTheDocument()
-    expect(screen.getByText('W4')).toBeInTheDocument()
+    await user.click(within(sidebar).getByRole('link', { name: '分析' }))
+    expect(await screen.findByRole('heading', { level: 1, name: '分析' })).toBeInTheDocument()
+    expect(screen.getByText('W5')).toBeInTheDocument()
   })
 
   it('按 N 打开记一笔，保存后出现在明细中', async () => {
@@ -278,6 +278,83 @@ describe('App', () => {
       const summary = await screen.findByRole('region', { name: '本月汇总' })
       expect(await within(summary).findByRole('progressbar', { name: '本月预算' })).toHaveAttribute('aria-valuenow', '90')
       expect(within(summary).getByText('月预算 ¥1,000.00')).toBeInTheDocument()
+    })
+  })
+
+  describe('导入', () => {
+    const CSV = [
+      '我的信用卡账单',
+      '',
+      '交易日期,交易摘要,人民币金额,交易地点',
+      '2026/10/31 12:08,美团外卖-订单 3381,-36.50,上海',
+      '2026/10/30 09:12,某某小店,-38.00,上海',
+      '2026/10/28,转账-张三,-200.00,',
+      '2026/10/26,工资,"8,000.00",',
+    ].join('\n')
+
+    it('通用 CSV：映射、预览去重与分类、确认入账，再整批撤销', async () => {
+      await db.open()
+      await addTransaction(db, { type: 'expense', amount: 20000, categoryId: 7, accountId: 1, date: '2026-10-28', note: '还钱' })
+      window.location.hash = '#/import'
+      const user = userEvent.setup()
+      render(<App />)
+
+      expect(await screen.findByText('还没有导入过账单。导入后可以在这里整批撤销。')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /^通用表格(?!导出)/ }))
+      expect(screen.getByRole('heading', { level: 1, name: /导入 · 通用表格/ })).toBeInTheDocument()
+
+      const file = new File([CSV], '信用卡账单.csv', { type: 'text/csv' })
+      await user.upload(screen.getByLabelText('选择账单文件'), file)
+
+      // 字段映射：跳过说明行，自动匹配日期、备注、金额
+      expect(await screen.findByText(/跳过前 2 行说明 · 4 行数据 · 4 列/)).toBeInTheDocument()
+      expect(screen.getByLabelText('「交易日期」映射到')).toHaveValue('date')
+      expect(screen.getByLabelText('「交易摘要」映射到')).toHaveValue('note')
+      expect(screen.getByLabelText('「人民币金额」映射到')).toHaveValue('amount')
+      expect(screen.getByLabelText('「交易地点」映射到')).toHaveValue('ignore')
+      expect(screen.getByText('解析成功 4 / 4')).toBeInTheDocument()
+      await user.selectOptions(screen.getByLabelText('入账账户（文件里没有账户列或对不上时）'), '银行卡')
+      await user.click(screen.getByRole('button', { name: '下一步：预览 4 条' }))
+
+      // 预览：美团外卖按关键词归为餐饮，工资归为工资，某某小店待分类，转账-张三与手记重复
+      const summary = await screen.findByRole('region', { name: '导入汇总' })
+      expect(within(summary).getByText('新增').previousSibling).toHaveTextContent('2')
+      expect(within(summary).getByText('疑似重复').previousSibling).toHaveTextContent('1')
+      expect(within(summary).getByText('待分类').previousSibling).toHaveTextContent('1')
+      expect(screen.getByLabelText('选择 转账-张三')).not.toBeChecked()
+      expect(screen.getByLabelText('选择 某某小店')).toBeChecked()
+      expect(screen.getByText('关键词：餐饮')).toBeInTheDocument()
+
+      await user.selectOptions(screen.getByLabelText('「某某小店」的分类'), '购物')
+      expect(within(summary).getByText('新增').previousSibling).toHaveTextContent('3')
+      await user.click(screen.getByRole('button', { name: '确认导入' }))
+
+      expect(await screen.findByRole('heading', { name: '已入账 3 条' })).toBeInTheDocument()
+      const imported = await db.transactions.where('source').equals('import').toArray()
+      expect(imported.map((t) => [t.date, t.time, t.type, t.amount, t.categoryId, t.accountId])).toEqual([
+        ['2026-10-31', '12:08', 'expense', 3650, 1, 2],
+        ['2026-10-30', '09:12', 'expense', 3800, 3, 2],
+        ['2026-10-26', undefined, 'income', 800000, 8, 2],
+      ])
+
+      // 回到导入中心，在导入记录里整批撤销
+      await user.click(screen.getByRole('button', { name: '继续导入' }))
+      expect(await screen.findByText(/4 条，入账 3/)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '撤销导入 信用卡账单.csv' }))
+      const dialog = await screen.findByRole('dialog', { name: '撤销这次导入？' })
+      await user.click(within(dialog).getByRole('button', { name: '撤销导入' }))
+      expect(await screen.findByText('已撤销导入，删除 3 条流水')).toBeInTheDocument()
+      expect(await db.transactions.count()).toBe(1)
+      expect(await screen.findByText('已撤销')).toBeInTheDocument()
+    })
+
+    it('xlsx 文件提示先另存为 CSV', async () => {
+      window.location.hash = '#/import'
+      const user = userEvent.setup({ applyAccept: false })
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: /^通用表格(?!导出)/ }))
+      await user.upload(screen.getByLabelText('选择账单文件'), new File(['x'], 'a.xlsx'))
+      expect(await screen.findByRole('alert')).toHaveTextContent('暂时只支持 CSV / TSV')
     })
   })
 })

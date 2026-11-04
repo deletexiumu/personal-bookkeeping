@@ -29,8 +29,10 @@ export interface Transaction {
   /** 标签，不含 # */
   tags?: string[]
   source: TransactionSource
-  /** 导入批次（W4），用于整批撤销 */
+  /** 导入批次，用于整批撤销 */
   importBatchId?: number
+  /** 外部交易单号（账单导入），用于重复导入时精确去重 */
+  externalId?: string
   createdAt: number
   updatedAt: number
 }
@@ -73,4 +75,21 @@ export interface Budget {
   categoryId?: number
   /** 每月金额（分） */
   amount: number
+}
+
+/** 账单来源 */
+export type ImportSource = 'wechat' | 'alipay' | 'bank' | 'csv' | 'json'
+
+/** 一次导入：用于导入记录与整批撤销 */
+export interface ImportBatch {
+  id?: number
+  source: ImportSource
+  fileName: string
+  /** 文件中的数据行数 */
+  rowCount: number
+  /** 实际入账条数 */
+  importedCount: number
+  createdAt: number
+  status: 'done' | 'reverted'
+  revertedAt?: number
 }
