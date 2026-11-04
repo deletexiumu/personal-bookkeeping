@@ -145,3 +145,23 @@ export function groupByDay(rows: Transaction[]): DayGroup[] {
   for (const group of groups) Object.assign(group, summarize(group.items))
   return groups
 }
+
+export type TransactionPatch = Partial<Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>>
+
+/** 修改一笔记录。传 undefined 的字段会被清除（例如清空备注）。 */
+export async function updateTransaction(db: BookkeepingDB, id: number, patch: TransactionPatch): Promise<void> {
+  await db.transaction('rw', db.transactions, async () => {
+    const current = await db.transactions.get(id)
+    if (!current) throw new Error('记录不存在或已被删除')
+    const next: Transaction = { ...current, ...patch, id, updatedAt: Date.now() }
+    for (const key of Object.keys(next) as (keyof Transaction)[]) {
+      if (next[key] === undefined) delete next[key]
+    }
+    await db.transactions.put(next)
+  })
+}
+
+/** 撤销删除：按原 ID 放回 */
+export async function restoreTransactions(db: BookkeepingDB, rows: Transaction[]): Promise<void> {
+  await db.transactions.bulkPut(rows)
+}
