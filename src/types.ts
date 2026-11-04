@@ -35,14 +35,31 @@ export interface Transaction {
   updatedAt: number
 }
 
+/** 分类和账户图标的配色，对应 tokens.css 中的语义色 / 图表色 */
+export type Tone = 'orange' | 'blue' | 'red' | 'green' | 'purple' | 'cyan' | 'gray'
+
 export interface Category {
   id?: number
   name: string
   type: CategoryType
+  /** 图标键名，见 src/components/icons.ts */
   icon?: string
+  color?: Tone
+  /** 排序，越小越靠前 */
+  order?: number
+  /** 归档后不再出现在记一笔和筛选中，历史记录保留 */
+  archived?: boolean
 }
+
+export type AccountType = 'cash' | 'debit' | 'credit' | 'alipay' | 'wechat' | 'other'
 
 export interface Account {
   id?: number
   name: string
+  type?: AccountType
+  /** 初始余额（分），信用卡可为负数表示欠款 */
+  initialBalance?: number
+  note?: string
+  order?: number
+  archived?: boolean
 }

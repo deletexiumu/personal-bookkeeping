@@ -1,11 +1,11 @@
 import { ChevronRight } from 'lucide-react'
-import { SIDEBAR_ITEMS } from '../app/nav'
+import { navItemOf } from '../app/nav'
 import { hrefOf, type RouteName } from '../app/router'
 import { PageHeader } from '../components/layout/AppShell'
 import { Badge } from '../components/ui/Badge'
 
 const GROUPS: { title: string; routes: RouteName[] }[] = [
-  { title: '账本管理', routes: ['accounts', 'budget', 'rules'] },
+  { title: '账本管理', routes: ['accounts', 'categories', 'budget', 'rules'] },
   { title: '数据', routes: ['import', 'api'] },
 ]
 
@@ -26,7 +26,7 @@ export function SettingsPage() {
           <h2 className="t-caption text-tertiary settings-group-title">{group.title}</h2>
           <ul className="card settings-list">
             {group.routes.map((route) => {
-              const item = SIDEBAR_ITEMS.find((i) => i.route === route)!
+              const item = navItemOf(route)
               const Icon = item.icon
               return (
                 <li key={route}>

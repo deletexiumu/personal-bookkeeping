@@ -1,5 +1,5 @@
 import { CloudCheck, Plus } from 'lucide-react'
-import { SIDEBAR_ITEMS } from '../../app/nav'
+import { SIDEBAR_ITEMS, sidebarRouteOf } from '../../app/nav'
 import { hrefOf, type RouteName } from '../../app/router'
 import { Kbd } from '../ui/Badge'
 import { Brand } from './Brand'
@@ -11,6 +11,7 @@ interface Props {
 
 /** 桌面端侧边栏（≥ 768 显示；768–1279 折叠为 72px 图标栏） */
 export function Sidebar({ route, onQuickAdd }: Props) {
+  const active = sidebarRouteOf(route)
   return (
     <aside className="sidebar" aria-label="主导航">
       <Brand />
@@ -25,7 +26,7 @@ export function Sidebar({ route, onQuickAdd }: Props) {
             key={r}
             href={hrefOf(r)}
             className="sidebar-item"
-            aria-current={route === r ? 'page' : undefined}
+            aria-current={active === r ? 'page' : undefined}
             title={label}
           >
             <Icon size={20} aria-hidden="true" />

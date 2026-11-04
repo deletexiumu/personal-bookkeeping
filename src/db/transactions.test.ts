@@ -155,3 +155,32 @@ describe('编辑与撤销删除', () => {
     await expect(updateTransaction(db, 999, { amount: 1 })).rejects.toThrow('记录不存在')
   })
 })
+
+describe('v3 分类与账户', () => {
+  it('新库的默认分类和账户带图标、类型和排序', async () => {
+    const food = await db.categories.get(1)
+    expect(food).toMatchObject({ name: '餐饮', icon: 'utensils', color: 'orange', order: 1 })
+    const wechat = await db.accounts.get(4)
+    expect(wechat).toMatchObject({ name: '微信', type: 'wechat', initialBalance: 0, order: 4 })
+  })
+
+  it('从 v2 升级时补上图标、类型和排序', async () => {
+    const name = `test-upgrade3-${crypto.randomUUID()}`
+    const v2 = new Dexie(name)
+    v2.version(2).stores({ transactions: '++id, date', categories: '++id, type, name', accounts: '++id, name' })
+    await v2.table('categories').bulkAdd([{ name: '餐饮', type: 'expense' }, { name: '宠物', type: 'expense' }])
+    await v2.table('accounts').bulkAdd([{ name: '微信' }, { name: '招行信用卡' }])
+    v2.close()
+
+    const upgraded = new BookkeepingDB(name)
+    expect(await upgraded.categories.toArray()).toEqual([
+      { id: 1, name: '餐饮', type: 'expense', icon: 'utensils', color: 'orange', order: 1 },
+      { id: 2, name: '宠物', type: 'expense', order: 2 },
+    ])
+    expect(await upgraded.accounts.toArray()).toEqual([
+      { id: 1, name: '微信', type: 'wechat', initialBalance: 0, order: 1 },
+      { id: 2, name: '招行信用卡', type: 'other', initialBalance: 0, order: 2 },
+    ])
+    await upgraded.delete()
+  })
+})
