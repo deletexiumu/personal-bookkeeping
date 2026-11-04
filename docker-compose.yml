@@ -1,0 +1,9 @@
+# 自托管示例：docker compose up -d，然后访问 http://localhost:8080
+services:
+  web:
+    image: ghcr.io/deletexiumu/personal-bookkeeping:latest
+    # 如需本地构建，注释掉 image 并改用：
+    # build: .
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

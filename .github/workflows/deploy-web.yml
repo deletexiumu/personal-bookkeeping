@@ -1,0 +1,51 @@
+# 把 Web/PWA 版本发布到 GitHub Pages：https://deletexiumu.github.io/personal-bookkeeping/
+# 首次使用前需在仓库 Settings → Pages 把 Source 设为 “GitHub Actions”。
+name: 部署 Web（GitHub Pages）
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: 构建
+        run: pnpm build
+        env:
+          # 自定义域名时 base_path 为空，回落到根路径
+          BASE_PATH: ${{ steps.pages.outputs.base_path && format('{0}/', steps.pages.outputs.base_path) || '/' }}
+      # GitHub Pages 没有服务端路由回落，用 404.html 兜底单页应用
+      - run: cp dist/index.html dist/404.html
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
