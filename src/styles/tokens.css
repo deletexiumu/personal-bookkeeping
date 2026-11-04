@@ -1,0 +1,139 @@
+/*
+ * 设计 Token：与 Figma 变量集合「Color」「Space & Radius」及文本样式一一对应。
+ * 命名规则：Figma 的 `bg/canvas` 对应 `--bg-canvas`，以此类推。
+ * 深色模式默认跟随系统；在 <html data-theme="light|dark"> 上可手动指定。
+ */
+
+:root {
+  /* 背景 */
+  --bg-canvas: #f4f6f9;
+  --bg-surface: #ffffff;
+  --bg-subtle: #eef1f6;
+
+  /* 文字 */
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --text-on-brand: #ffffff;
+
+  /* 边框 */
+  --border-default: #e5e7eb;
+
+  /* 品牌 */
+  --brand-primary: #2f6bff;
+  --brand-primary-hover: #1f58e6;
+  --brand-soft: #e8efff;
+
+  /* 语义 */
+  --semantic-income: #16a34a;
+  --semantic-expense: #e5484d;
+  --semantic-warning: #f59e0b;
+  --semantic-income-soft: #e7f7ee;
+  --semantic-expense-soft: #fdecec;
+  --semantic-warning-soft: #fef3dc;
+
+  /* 图表 */
+  --chart-1: #2f6bff;
+  --chart-2: #22c55e;
+  --chart-3: #f59e0b;
+  --chart-4: #ef4444;
+  --chart-5: #8b5cf6;
+  --chart-6: #06b6d4;
+
+  /* 间距：4 的倍数 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+
+  /* 阴影 */
+  --shadow-card: 0 1px 2px rgb(17 24 39 / 4%);
+  --shadow-overlay: 0 12px 40px rgb(17 24 39 / 18%);
+  --overlay-scrim: rgb(17 24 39 / 40%);
+
+  /* 字体：中文 Noto Sans SC（回退 PingFang SC / Microsoft YaHei），金额数字 Inter */
+  --font-sans:
+    'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    system-ui, -apple-system, sans-serif;
+  --font-num: 'Inter Variable', 'Inter', var(--font-sans);
+
+  /* 布局 */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 72px;
+  --tabbar-height: 64px;
+
+  color-scheme: light;
+}
+
+/* 深色模式：跟随系统（未手动指定浅色时） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: #0d1117;
+    --bg-surface: #161b22;
+    --bg-subtle: #1f2630;
+    --text-primary: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --text-tertiary: #6b7280;
+    --border-default: #2a313c;
+    --brand-primary: #5b8cff;
+    --brand-primary-hover: #7aa2ff;
+    --brand-soft: #1b2948;
+    --semantic-income: #34d399;
+    --semantic-expense: #f87171;
+    --semantic-warning: #fbbf24;
+    --semantic-income-soft: #12301f;
+    --semantic-expense-soft: #3a1a1c;
+    --semantic-warning-soft: #3a2c10;
+    --chart-1: #5b8cff;
+    --chart-2: #4ade80;
+    --chart-3: #fbbf24;
+    --chart-4: #f87171;
+    --chart-5: #a78bfa;
+    --chart-6: #22d3ee;
+    --shadow-card: none;
+    --shadow-overlay: 0 12px 40px rgb(0 0 0 / 50%);
+    --overlay-scrim: rgb(0 0 0 / 55%);
+    color-scheme: dark;
+  }
+}
+
+/* 深色模式：手动指定 */
+:root[data-theme='dark'] {
+  --bg-canvas: #0d1117;
+  --bg-surface: #161b22;
+  --bg-subtle: #1f2630;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-tertiary: #6b7280;
+  --border-default: #2a313c;
+  --brand-primary: #5b8cff;
+  --brand-primary-hover: #7aa2ff;
+  --brand-soft: #1b2948;
+  --semantic-income: #34d399;
+  --semantic-expense: #f87171;
+  --semantic-warning: #fbbf24;
+  --semantic-income-soft: #12301f;
+  --semantic-expense-soft: #3a1a1c;
+  --semantic-warning-soft: #3a2c10;
+  --chart-1: #5b8cff;
+  --chart-2: #4ade80;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
+  --chart-6: #22d3ee;
+  --shadow-card: none;
+  --shadow-overlay: 0 12px 40px rgb(0 0 0 / 50%);
+  --overlay-scrim: rgb(0 0 0 / 55%);
+  color-scheme: dark;
+}

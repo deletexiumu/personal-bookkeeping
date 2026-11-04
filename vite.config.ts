@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
 // 部署子路径：GitHub Pages 项目页为 /personal-bookkeeping/，其余场景默认根路径
 const base = process.env.BASE_PATH ?? '/'
@@ -20,6 +23,9 @@ export default defineConfig({
     strictPort: true,
   },
   envPrefix: ['VITE_', 'TAURI_ENV_'],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   build: {
     // Windows 用 WebView2(Chromium)，macOS 用 WKWebView(Safari)
     target: isTauri
@@ -34,6 +40,10 @@ export default defineConfig({
     VitePWA({
       disable: isTauri,
       registerType: 'autoUpdate',
+      workbox: {
+        // 预缓存 Inter 拉丁字符子集，离线时金额数字字体不回退
+        globPatterns: ['**/*.{js,css,html}', 'assets/inter-latin-wght-normal-*.woff2'],
+      },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: '陶朱簿',
@@ -43,8 +53,8 @@ export default defineConfig({
         start_url: base,
         scope: base,
         display: 'standalone',
-        background_color: '#f8fafc',
-        theme_color: '#0f766e',
+        background_color: '#f4f6f9',
+        theme_color: '#2f6bff',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },

@@ -37,3 +37,25 @@ export function summarize(rows: Transaction[]): MonthSummary {
   }
   return { income, expense, balance: income - expense }
 }
+
+export interface DayGroup extends MonthSummary {
+  date: string
+  items: Transaction[]
+}
+
+/** 把已按日期倒序排好的记录按天分组，并算出每天的收支小计 */
+export function groupByDay(rows: Transaction[]): DayGroup[] {
+  const groups: DayGroup[] = []
+  for (const row of rows) {
+    let group = groups.at(-1)
+    if (!group || group.date !== row.date) {
+      group = { date: row.date, items: [], income: 0, expense: 0, balance: 0 }
+      groups.push(group)
+    }
+    group.items.push(row)
+    if (row.type === 'income') group.income += row.amount
+    else group.expense += row.amount
+    group.balance = group.income - group.expense
+  }
+  return groups
+}

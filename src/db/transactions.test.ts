@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { BookkeepingDB } from './index'
-import { addTransaction, listByMonth, summarize } from './transactions'
+import { addTransaction, groupByDay, listByMonth, summarize } from './transactions'
 
 let db: BookkeepingDB
 
@@ -32,5 +32,20 @@ describe('transactions', () => {
     const rows = await listByMonth(db, '2026-11')
     expect(rows.map((r) => r.date)).toEqual(['2026-11-15', '2026-11-01'])
     expect(summarize(rows)).toEqual({ income: 800000, expense: 2500, balance: 797500 })
+  })
+})
+
+describe('groupByDay', () => {
+  it('按天分组并计算每日小计', () => {
+    const base = { categoryId: 1, accountId: 1, createdAt: 0, updatedAt: 0 }
+    const groups = groupByDay([
+      { ...base, id: 1, type: 'expense', amount: 3200, date: '2026-11-04' },
+      { ...base, id: 2, type: 'expense', amount: 600, date: '2026-11-04' },
+      { ...base, id: 3, type: 'income', amount: 1200000, date: '2026-11-03' },
+    ])
+    expect(groups.map((g) => [g.date, g.items.length, g.expense, g.income])).toEqual([
+      ['2026-11-04', 2, 3800, 0],
+      ['2026-11-03', 1, 0, 1200000],
+    ])
   })
 })
