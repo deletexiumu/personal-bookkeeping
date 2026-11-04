@@ -25,7 +25,7 @@ jobs:
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: 标签需与 package.json 版本一致
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-            --title "个人记账 $GITHUB_REF_NAME" \
+            --title "陶朱簿 $GITHUB_REF_NAME" \
             --notes "下载对应平台的安装包：macOS 选 .dmg（Apple Silicon 选 aarch64，Intel 选 x64），Windows 选 .exe 或 .msi。未签名版本在 macOS 首次打开需在“访达”中右键选择“打开”。"
           id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n1)"
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
@@ -64,7 +64,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -73,21 +73,38 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
       - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v0
+      # Tauri 只要看到 APPLE_CERTIFICATE 变量存在（哪怕是空字符串）就会尝试签名，
+      # 所以只导出已配置的签名 Secret；都没配置时产出未签名安装包。
+      - name: 配置 macOS 签名（可选）
+        if: runner.os == 'macOS'
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 以下签名变量未配置时为空，构建会跳过签名
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "未配置 APPLE_CERTIFICATE，跳过签名"
+            exit 0
+          fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              delim="EOF_$(openssl rand -hex 8)"
+              { echo "$name<<$delim"; echo "$value"; echo "$delim"; } >> "$GITHUB_ENV"
+            fi
+          done
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: --target ${{ matrix.target }}
           # 为空时只构建不上传（手动触发）
@@ -108,16 +125,16 @@ jobs:
     needs: create-release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: cd dist && zip -qr "../personal-bookkeeping-web-${GITHUB_REF_NAME}.zip" .
+      - run: cd dist && zip -qr "../taozhubu-web-${GITHUB_REF_NAME}.zip" .
       - name: 附加到草稿 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" personal-bookkeeping-web-*.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" taozhubu-web-*.zip --clobber

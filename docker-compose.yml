@@ -1,4 +1,4 @@
-# 自托管示例：docker compose up -d，然后访问 http://localhost:8080
+# 陶朱簿自托管示例：docker compose up -d，然后访问 http://localhost:8080
 services:
   web:
     image: ghcr.io/deletexiumu/personal-bookkeeping:latest

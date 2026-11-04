@@ -1,0 +1,88 @@
+# 仓库所有者发起的 PR 在 CI 全部通过后自动合并；其他人的 PR（包括 Dependabot）仍需手动合并。
+#
+# 规则：
+# - 只处理作者是仓库所有者、目标分支是 main、来自本仓库分支、非草稿的 PR；
+# - 只在 CI 针对该 PR「当前最新提交」成功时合并，CI 失败、被取消或 PR 之后又有新推送都不会合并；
+# - 不想自动合并某个 PR 时，给它打上 `no-automerge` 标签，或保持草稿状态。
+#
+# 合并令牌：
+# - 推荐在仓库 Secrets 配置 AUTO_MERGE_TOKEN（所有者的 fine-grained PAT，权限见 docs/deployment.md 3.1）。
+#   用它合并等同于所有者本人合并：能合并改动 .github/workflows/ 的 PR，合并后的推送也会正常触发各工作流。
+# - 未配置时退回内置 GITHUB_TOKEN。它不能合并改动工作流文件的 PR（GitHub 限制），
+#   且它产生的推送不会触发 push 事件，所以合并后这里手动派发 main 上的 CI、Web 部署和 Docker 镜像构建。
+name: 自动合并
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: 合并所有者的 PR
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN || secrets.GITHUB_TOKEN }}
+      HAS_PAT: ${{ secrets.AUTO_MERGE_TOKEN != '' }}
+      GH_REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+    steps:
+      - name: 找到对应的 PR 并检查是否符合规则
+        id: check
+        run: |
+          if [ "$HEAD_REPO" != "$GH_REPO" ]; then
+            echo "来自 fork 的 PR，跳过"; exit 0
+          fi
+          pr="$(gh api "repos/$GH_REPO/pulls?state=open&head=$OWNER:$HEAD_BRANCH" --jq '.[0] // empty')"
+          if [ -z "$pr" ]; then
+            echo "分支 $HEAD_BRANCH 没有打开的 PR，跳过"; exit 0
+          fi
+          number="$(jq -r .number <<<"$pr")"
+          author="$(jq -r .user.login <<<"$pr")"
+          base="$(jq -r .base.ref <<<"$pr")"
+          sha="$(jq -r .head.sha <<<"$pr")"
+          draft="$(jq -r .draft <<<"$pr")"
+          optout="$(jq -r '[.labels[].name] | index("no-automerge") != null' <<<"$pr")"
+          echo "PR #$number：作者 $author，目标 $base，草稿 $draft，no-automerge $optout"
+          if [ "$author" != "$OWNER" ]; then echo "不是仓库所有者发起的 PR，需手动合并"; exit 0; fi
+          if [ "$base" != "main" ]; then echo "目标分支不是 main，跳过"; exit 0; fi
+          if [ "$draft" = "true" ]; then echo "草稿 PR，跳过"; exit 0; fi
+          if [ "$optout" = "true" ]; then echo "带有 no-automerge 标签，跳过"; exit 0; fi
+          if [ "$sha" != "$HEAD_SHA" ]; then echo "PR 已有更新的提交，等它的 CI 结果"; exit 0; fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: 合并
+        if: steps.check.outputs.number
+        run: |
+          number="${{ steps.check.outputs.number }}"
+          if ! out="$(gh pr merge "$number" --merge --match-head-commit "$HEAD_SHA" 2>&1)"; then
+            echo "$out"
+            if grep -q "without \`workflows\` permission" <<<"$out"; then
+              echo "::error::PR #$number 改动了工作流文件，内置 GITHUB_TOKEN 无权合并。请配置 AUTO_MERGE_TOKEN（见 docs/deployment.md 3.1），或手动合并这个 PR。"
+            fi
+            exit 1
+          fi
+          echo "PR #${{ steps.check.outputs.number }} 已合并" >> "$GITHUB_STEP_SUMMARY"
+
+      # 用 PAT 合并时推送会自然触发这些工作流，不必再派发
+      - name: 触发 main 上的 CI、Web 部署和 Docker 镜像
+        if: steps.check.outputs.number && env.HAS_PAT != 'true'
+        run: |
+          for wf in ci.yml deploy-web.yml docker.yml; do
+            gh workflow run "$wf" --ref main
+          done
