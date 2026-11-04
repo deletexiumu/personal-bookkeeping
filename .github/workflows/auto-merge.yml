@@ -5,9 +5,11 @@
 # - 只在 CI 针对该 PR「当前最新提交」成功时合并，CI 失败、被取消或 PR 之后又有新推送都不会合并；
 # - 不想自动合并某个 PR 时，给它打上 `no-automerge` 标签，或保持草稿状态。
 #
-# 合并用内置 GITHUB_TOKEN 完成，无需额外密钥，也不需要开启仓库的 “Allow auto-merge”。
-# GitHub 不会因 GITHUB_TOKEN 产生的推送触发其他工作流，所以合并后这里手动派发
-# main 上的 CI、Web 部署和 Docker 镜像构建，效果与手动合并一致。
+# 合并令牌：
+# - 推荐在仓库 Secrets 配置 AUTO_MERGE_TOKEN（所有者的 fine-grained PAT，权限见 docs/deployment.md 3.1）。
+#   用它合并等同于所有者本人合并：能合并改动 .github/workflows/ 的 PR，合并后的推送也会正常触发各工作流。
+# - 未配置时退回内置 GITHUB_TOKEN。它不能合并改动工作流文件的 PR（GitHub 限制），
+#   且它产生的推送不会触发 push 事件，所以合并后这里手动派发 main 上的 CI、Web 部署和 Docker 镜像构建。
 name: 自动合并
 
 on:
@@ -32,7 +34,8 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN || secrets.GITHUB_TOKEN }}
+      HAS_PAT: ${{ secrets.AUTO_MERGE_TOKEN != '' }}
       GH_REPO: ${{ github.repository }}
       OWNER: ${{ github.repository_owner }}
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -66,11 +69,19 @@ jobs:
       - name: 合并
         if: steps.check.outputs.number
         run: |
-          gh pr merge "${{ steps.check.outputs.number }}" --merge --match-head-commit "$HEAD_SHA"
+          number="${{ steps.check.outputs.number }}"
+          if ! out="$(gh pr merge "$number" --merge --match-head-commit "$HEAD_SHA" 2>&1)"; then
+            echo "$out"
+            if grep -q "without \`workflows\` permission" <<<"$out"; then
+              echo "::error::PR #$number 改动了工作流文件，内置 GITHUB_TOKEN 无权合并。请配置 AUTO_MERGE_TOKEN（见 docs/deployment.md 3.1），或手动合并这个 PR。"
+            fi
+            exit 1
+          fi
           echo "PR #${{ steps.check.outputs.number }} 已合并" >> "$GITHUB_STEP_SUMMARY"
 
+      # 用 PAT 合并时推送会自然触发这些工作流，不必再派发
       - name: 触发 main 上的 CI、Web 部署和 Docker 镜像
-        if: steps.check.outputs.number
+        if: steps.check.outputs.number && env.HAS_PAT != 'true'
         run: |
           for wf in ci.yml deploy-web.yml docker.yml; do
             gh workflow run "$wf" --ref main

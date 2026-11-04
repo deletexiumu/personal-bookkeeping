@@ -109,7 +109,12 @@ CI 在切换 monorepo 时只需把 `pnpm build` 换成 `pnpm -r build`（或 `pn
 - **谁要手动合并**：其他人的 PR，以及 Dependabot 的依赖升级 PR。
 - **临时不想自动合并**：给 PR 打上 `no-automerge` 标签，或先开成草稿。去掉标签后需要在 Actions 里重跑一次该 PR 的 CI（草稿转正式会自动重跑）。
 - **不会合并的情况**：CI 失败或被取消、CI 跑完前又推了新提交（等新提交的 CI）、与 `main` 有冲突（自动合并任务会失败并在 Actions 里报错）。
-- 合并用内置 `GITHUB_TOKEN`，不需要额外密钥，也不依赖仓库的 “Allow auto-merge” 开关。由于 `GITHUB_TOKEN` 的推送不会触发 `push` 事件，工作流会在合并后手动派发 `ci.yml`、`deploy-web.yml`、`docker.yml`。
+- **合并令牌（推荐配置）**：在仓库 Secrets 里放一个所有者的 fine-grained PAT，名为 `AUTO_MERGE_TOKEN`，用它合并等同于本人合并。
+  1. 打开 <https://github.com/settings/personal-access-tokens/new>，Repository access 选 *Only select repositories* → `personal-bookkeeping`。
+  2. Repository permissions 设为：Contents、Pull requests、Workflows 均为 *Read and write*（Metadata 自动为只读）。有效期到期前记得续期。
+  3. 生成后复制令牌，打开 <https://github.com/deletexiumu/personal-bookkeeping/settings/secrets/actions/new>，Name 填 `AUTO_MERGE_TOKEN`，粘贴保存。
+- **不配置令牌时**退回内置 `GITHUB_TOKEN`，不需要额外设置，但有两点限制：改动了 `.github/workflows/` 的 PR 可能会被 GitHub 拒绝合并（Actions 里会报错说明原因，需手动合并）；它产生的推送不会触发 `push` 事件，所以工作流会在合并后手动派发 `ci.yml`、`deploy-web.yml`、`docker.yml`。
+- 两种方式都不依赖仓库的 “Allow auto-merge” 开关，也不需要分支保护规则。
 
 ### 3.2 发版流程
 
