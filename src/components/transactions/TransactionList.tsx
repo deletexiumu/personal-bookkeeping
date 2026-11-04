@@ -1,35 +1,19 @@
-import { NotebookPen } from 'lucide-react'
 import { groupByDay } from '../../db/transactions'
 import { formatDayLabel } from '../../lib/date'
 import { formatCents } from '../../lib/money'
-import type { Account, Category, Transaction } from '../../types'
-import { Button } from '../ui/Button'
+import type { Transaction } from '../../types'
+import type { Lookup } from './display'
 import { TransactionRow } from './TransactionRow'
 
 interface Props {
   transactions: Transaction[]
-  categories: Category[]
-  accounts: Account[]
+  lookup: Lookup
+  onOpen: (t: Transaction) => void
   onDelete: (t: Transaction) => void
-  onQuickAdd: () => void
 }
 
-/** 明细列表：按天分组，组标题显示当天支出 / 收入小计 */
-export function TransactionList({ transactions, categories, accounts, onDelete, onQuickAdd }: Props) {
-  if (transactions.length === 0) {
-    return (
-      <div className="empty-state">
-        <NotebookPen size={40} aria-hidden="true" />
-        <p className="t-body-m text-secondary">这个月还没有记录，记下第一笔吧。</p>
-        <Button variant="primary" onClick={onQuickAdd}>
-          记一笔
-        </Button>
-      </div>
-    )
-  }
-  const categoryById = new Map(categories.map((c) => [c.id, c]))
-  const accountById = new Map(accounts.map((a) => [a.id, a]))
-
+/** 明细列表（移动端 / 窄窗口）：按天分组，组标题显示当天支出 / 收入小计 */
+export function TransactionList({ transactions, lookup, onOpen, onDelete }: Props) {
   return (
     <div className="day-groups" aria-label="收支明细">
       {groupByDay(transactions).map((group) => (
@@ -44,14 +28,7 @@ export function TransactionList({ transactions, categories, accounts, onDelete, 
           </header>
           <ul className="card tx-list">
             {group.items.map((t) => (
-              <TransactionRow
-                key={t.id}
-                transaction={t}
-                category={t.categoryId === undefined ? undefined : categoryById.get(t.categoryId)}
-                account={accountById.get(t.accountId)}
-                toAccount={t.transferAccountId === undefined ? undefined : accountById.get(t.transferAccountId)}
-                onDelete={onDelete}
-              />
+              <TransactionRow key={t.id} transaction={t} lookup={lookup} onOpen={onOpen} onDelete={onDelete} />
             ))}
           </ul>
         </section>

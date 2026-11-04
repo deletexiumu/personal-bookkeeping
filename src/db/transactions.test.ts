@@ -1,7 +1,17 @@
 import { Dexie } from 'dexie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { BookkeepingDB } from './index'
-import { addTransaction, addTransfer, categoryUsage, groupByDay, listByMonth, summarize } from './transactions'
+import {
+  addTransaction,
+  addTransfer,
+  categoryUsage,
+  deleteTransaction,
+  groupByDay,
+  listByMonth,
+  restoreTransactions,
+  summarize,
+  updateTransaction,
+} from './transactions'
 
 let db: BookkeepingDB
 
@@ -119,5 +129,29 @@ describe('v2 数据模型', () => {
     expect(usage.get(2)).toBe(2)
     expect(usage.get(3)).toBe(1)
     expect(usage.size).toBe(2)
+  })
+})
+
+describe('编辑与撤销删除', () => {
+  it('修改字段并清除传 undefined 的字段', async () => {
+    const id = await addTransaction(db, { type: 'expense', amount: 100, categoryId: 1, accountId: 1, date: '2026-11-04', note: '旧备注' })
+    await updateTransaction(db, id, { amount: 250, note: undefined, merchant: '瑞幸' })
+    const row = await db.transactions.get(id)
+    expect(row).toMatchObject({ amount: 250, merchant: '瑞幸' })
+    expect(row).not.toHaveProperty('note')
+    expect(row!.updatedAt).toBeGreaterThanOrEqual(row!.createdAt)
+  })
+
+  it('删除后按原 ID 恢复', async () => {
+    const id = await addTransaction(db, { type: 'expense', amount: 100, categoryId: 1, accountId: 1, date: '2026-11-04' })
+    const row = (await db.transactions.get(id))!
+    await deleteTransaction(db, id)
+    expect(await db.transactions.count()).toBe(0)
+    await restoreTransactions(db, [row])
+    expect(await db.transactions.get(id)).toEqual(row)
+  })
+
+  it('修改不存在的记录时报错', async () => {
+    await expect(updateTransaction(db, 999, { amount: 1 })).rejects.toThrow('记录不存在')
   })
 })
