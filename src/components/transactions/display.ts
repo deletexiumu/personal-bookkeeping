@@ -33,5 +33,5 @@ export function signedAmount(t: Transaction): string {
 }
 
 export function amountClass(t: Transaction): string {
-  return t.type === 'income' ? 'text-income' : t.type === 'transfer' ? 'text-secondary' : ''
+  return t.type === 'income' ? 'amount-income' : t.type === 'transfer' ? 'text-secondary' : 'amount-expense'
 }

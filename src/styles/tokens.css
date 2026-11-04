@@ -147,3 +147,22 @@
   --overlay-scrim: rgb(0 0 0 / 55%);
   color-scheme: dark;
 }
+
+/*
+ * 金额配色（设置 → 外观）：只作用于流水金额，不影响成功 / 危险等状态色。
+ * 默认收入绿、支出用正文色；「红收绿支」「绿收红支」两种习惯可切换。
+ */
+:root {
+  --amount-income: var(--semantic-income);
+  --amount-expense: var(--text-primary);
+}
+
+:root[data-money='red-income'] {
+  --amount-income: var(--semantic-expense);
+  --amount-expense: var(--semantic-income);
+}
+
+:root[data-money='green-income'] {
+  --amount-income: var(--semantic-income);
+  --amount-expense: var(--semantic-expense);
+}

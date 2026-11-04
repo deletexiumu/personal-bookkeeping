@@ -212,7 +212,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                 </label>
               )}
               </span>
-              <span className={`t-num-m preview-amount ${neutral ? 'text-secondary' : row.type === 'income' ? 'text-income' : ''}`}>
+              <span className={`t-num-m preview-amount ${neutral ? 'text-secondary' : row.type === 'income' ? 'amount-income' : 'amount-expense'}`}>
                 {neutral ? '' : row.type === 'income' ? '+' : '-'}
                 {formatCents(row.amount)}
               </span>
