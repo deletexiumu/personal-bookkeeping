@@ -1,5 +1,5 @@
-# 陶朱簿 Web 在 hkserver 上的部署（放在服务器的 /opt/taozhubu/）。
-# 对外地址：https://taozhubu.deepai.wiki/
+# 陶朱簿 Web 自托管部署（放在服务器的 /opt/taozhubu/）。
+# 对外域名不写进仓库，只配置在服务器的 nginx 站点和仓库 Secret DEPLOY_URL 里。
 # 链路：宿主 nginx stream（:443 按 SNI 分流）→ pigsty-nginx（:4433）→ taozhubu-web:8080
 # 不占宿主端口，只挂 pigsty_pigsty 网络，由 pigsty-nginx 按容器名反代。
 # 镜像标签由 deploy.sh 写进同目录 .env 的 TAOZHUBU_TAG，默认 edge（main 最新）。

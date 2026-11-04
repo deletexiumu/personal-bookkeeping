@@ -38,15 +38,15 @@ docker run -d -p 8080:8080 taozhubu
 
 镜像同时提供 `linux/amd64` 和 `linux/arm64`，可以跑在云服务器、NAS 或树莓派上。注意 PWA 的 Service Worker 要求 HTTPS（`localhost` 除外），对外提供服务时请在前面加一层带证书的反向代理（Caddy、nginx、Traefik 等）。
 
-#### 1.2.1 hkserver 上的部署
+#### 1.2.1 自托管服务器上的部署
 
-线上地址是 <https://taozhubu.deepai.wiki/>。服务器配置文件放在仓库的 `deploy/server/`：
+对外域名不写进仓库，只配置在服务器的 nginx 站点和仓库 Secret `DEPLOY_URL` 里。服务器配置文件放在仓库的 `deploy/server/`：
 
 | 仓库文件 | 服务器位置 | 作用 |
 | --- | --- | --- |
 | `deploy/server/docker-compose.yml` | `/opt/taozhubu/docker-compose.yml` | 容器 `taozhubu-web`，不占宿主端口，只挂 `pigsty_pigsty` 网络 |
 | `deploy/server/deploy.sh` | `/opt/taozhubu/deploy.sh` | 拉镜像、重建容器、等健康检查，不通过就回滚到上一个标签 |
-| `deploy/server/taozhubu.conf` | `/opt/pigsty/nginx/conf.d/taozhubu.conf` | pigsty-nginx 的站点配置，按容器名反代 |
+| `deploy/server/site.conf.template` | `/opt/pigsty/nginx/conf.d/taozhubu.conf` | pigsty-nginx 的站点配置模板，把 `__DOMAIN__` 换成实际域名后放到服务器 |
 
 请求链路：宿主 nginx 在 443 端口按 SNI 分流，转给 pigsty-nginx（`127.0.0.1:4433`），再按容器名转给 `taozhubu-web:8080`。证书由 certbot 的 dns-cloudflare 插件签发，和服务器上其他站点一样自动续期。
 
@@ -61,7 +61,7 @@ docker run -d -p 8080:8080 taozhubu
 | `DEPLOY_HOST` | Secret | 服务器公网 IP |
 | `DEPLOY_PORT` | Secret | SSH 端口 |
 | `DEPLOY_USER` | Secret | 登录用户，不填时为 `root` |
-| `DEPLOY_URL` | Variable | `https://taozhubu.deepai.wiki`，部署后检查 `/healthz` |
+| `DEPLOY_URL` | Secret | 站点地址，如 `https://<你的域名>`，部署后检查 `/healthz`；放在 Secret 里，日志中会被打码 |
 
 没配 `DEPLOY_SSH_KEY` 时 `deploy` 任务直接跳过，不影响镜像发布。
 
@@ -135,7 +135,7 @@ CI 在切换 monorepo 时只需把 `pnpm build` 换成 `pnpm -r build`（或 `pn
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | PR、推送 `main`、手动 | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
 | `.github/workflows/deploy-web.yml` | 推送 `main`、手动 | 构建并部署到 GitHub Pages |
-| `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io；`main` 的镜像推送完成后经 SSH 部署到 hkserver（见 1.2.1） |
+| `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io；`main` 的镜像推送完成后经 SSH 部署到自托管服务器（见 1.2.1） |
 | `.github/workflows/release.yml` | `v*` 标签、手动 | 创建草稿 Release，构建 macOS（arm64 / x64）、Windows 安装包和 Web 静态包并上传；手动触发时只构建，产物在 Actions 页面下载 |
 | `.github/workflows/auto-merge.yml` | CI 完成后 | 仓库所有者发起的 PR 在 CI 通过后自动合并，并派发 main 上的 CI、Web 部署和 Docker 构建；其他人的 PR 需手动合并（见 3.1） |
 | `.github/dependabot.yml` | 定时 | 自动提 PR 升级 Actions、npm、Cargo 依赖 |
