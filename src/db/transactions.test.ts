@@ -148,7 +148,8 @@ describe('编辑与撤销删除', () => {
     await deleteTransaction(db, id)
     expect(await db.transactions.count()).toBe(0)
     await restoreTransactions(db, [row])
-    expect(await db.transactions.get(id)).toEqual(row)
+    // 恢复算一次本机修改：uid 不变，修改时间更新
+    expect(await db.transactions.get(id)).toEqual({ ...row, modifiedAt: expect.any(Number) })
   })
 
   it('修改不存在的记录时报错', async () => {
@@ -173,11 +174,12 @@ describe('v3 分类与账户', () => {
     v2.close()
 
     const upgraded = new BookkeepingDB(name)
-    expect(await upgraded.categories.toArray()).toEqual([
-      { id: 1, name: '餐饮', type: 'expense', icon: 'utensils', color: 'orange', order: 1 },
-      { id: 2, name: '宠物', type: 'expense', order: 2 },
+    // v7 同时补上同步字段：没改过的默认分类用固定 uid、不推送，其余标记待推送（详见 sync.test.ts）
+    expect(await upgraded.categories.toArray()).toMatchObject([
+      { id: 1, name: '餐饮', type: 'expense', icon: 'utensils', color: 'orange', order: 1, uid: 'default-category-1', modifiedAt: 0 },
+      { id: 2, name: '宠物', type: 'expense', order: 2, dirty: 1 },
     ])
-    expect(await upgraded.accounts.toArray()).toEqual([
+    expect(await upgraded.accounts.toArray()).toMatchObject([
       { id: 1, name: '微信', type: 'wechat', initialBalance: 0, order: 1 },
       { id: 2, name: '招行信用卡', type: 'other', initialBalance: 0, order: 2 },
     ])

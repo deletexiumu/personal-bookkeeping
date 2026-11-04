@@ -54,7 +54,7 @@ describe('内嵌数据库目录锁', () => {
     expect(dataDirInUse(dir, Date.now() + 60_000)).toBe(false)
     await expect(runAdmin(['stats'], { DATA_DIR: dir })).rejects.toThrow('docker compose stop api')
     release()
-    expect(await runAdmin(['stats'], { DATA_DIR: dir })).toBe('账号数：0')
+    expect(await runAdmin(['stats'], { DATA_DIR: dir })).toBe('账号数：0\n云端记录数：0')
     expect(await runAdmin(['nope'], { DATA_DIR: dir })).toMatch(/^用法/)
   })
 })

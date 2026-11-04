@@ -1,4 +1,5 @@
-import { ChevronRight, DatabaseBackup, Download, FileSpreadsheet, Scale } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { ChevronRight, DatabaseBackup, Download, FileSpreadsheet, History, Scale } from 'lucide-react'
 import { useState } from 'react'
 import { navItemOf } from '../app/nav'
 import { usePreferences, type MoneyColors, type ThemePreference } from '../app/preferences'
@@ -9,7 +10,7 @@ import { LicenseInfo } from '../components/settings/LicenseInfo'
 import { Dialog } from '../components/ui/Dialog'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
-import { exportBackup } from '../db/backup'
+import { exportBackup, latestUpgradeBackup } from '../db/backup'
 import { listAccounts, listCategories } from '../db/catalog'
 import { backupFileName } from '../lib/backup'
 import { downloadText } from '../lib/download'
@@ -66,6 +67,7 @@ export function SettingsPage() {
   const toast = useToast()
   const [preferences, setPreferences] = usePreferences()
   const [licenseOpen, setLicenseOpen] = useState(false)
+  const upgradeBackup = useLiveQuery(() => latestUpgradeBackup(db), [])
 
   async function handleExportCsv() {
     try {
@@ -162,6 +164,27 @@ export function SettingsPage() {
               <ChevronRight size={18} aria-hidden="true" className="text-tertiary" />
             </button>
           </li>
+          {upgradeBackup && (
+            <li>
+              <button
+                type="button"
+                className="settings-item"
+                onClick={() =>
+                  downloadText(
+                    backupFileName(new Date(upgradeBackup.exportedAt)).replace('backup', 'before-upgrade'),
+                    JSON.stringify(upgradeBackup, null, 2),
+                  )
+                }
+              >
+                <History size={20} aria-hidden="true" className="settings-item-icon" />
+                <span className="t-body-m">下载最近的自动备份</span>
+                <span className="settings-item-value t-body-s text-tertiary">
+                  {new Date(upgradeBackup.exportedAt).toLocaleDateString('zh-CN')}
+                </span>
+                <ChevronRight size={18} aria-hidden="true" className="text-tertiary" />
+              </button>
+            </li>
+          )}
           <li>
             <a href="#/import/json" className="settings-item">
               <DatabaseBackup size={20} aria-hidden="true" className="settings-item-icon" />
@@ -171,7 +194,7 @@ export function SettingsPage() {
           </li>
         </ul>
         <p className="t-caption text-tertiary">
-          CSV 可以用 Excel 打开，也能在导入中心按「通用表格」导回。JSON 备份包含分类、账户、预算和规则，用于完整恢复。数据只存在这台设备的浏览器里，清理浏览器数据会一并删除，建议定期导出备份。
+          CSV 可以用 Excel 打开，也能在导入中心按「通用表格」导回。JSON 备份包含分类、账户、预算和规则，用于完整恢复。未登录时数据只存在这台设备的浏览器里，清理浏览器数据会一并删除，建议定期导出备份。{upgradeBackup && '应用升级数据结构前、用云端数据替换本机前会自动留一份备份，如有数据异常，可下载后从备份恢复。'}
         </p>
       </section>
       <section className="settings-group">

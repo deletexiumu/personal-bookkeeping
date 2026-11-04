@@ -5,6 +5,7 @@ import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { authRoutes, type AuthDeps } from './auth/routes.ts'
 import { ApiError } from './http.ts'
+import { syncRoutes } from './sync/routes.ts'
 
 /**
  * 所有接口都在 /api 下：线上由 nginx 把同域名的 /api/ 转给本服务，Web 端同源访问。
@@ -37,6 +38,7 @@ export function createApp(deps: AuthDeps) {
   })
 
   app.route('/auth', authRoutes(deps))
+  app.route('/sync', syncRoutes(deps))
 
   app.notFound((c) => c.json(errorBody('not_found', '接口不存在'), 404))
   app.onError((err, c) => {

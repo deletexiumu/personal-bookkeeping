@@ -44,7 +44,7 @@
 
 - **React 19 + TypeScript + Vite**：前端界面
 - **PWA（vite-plugin-pwa）**：可安装到手机/电脑桌面，离线可用
-- **IndexedDB（Dexie）**：数据保存在本机，不上传任何服务器
+- **IndexedDB（Dexie）**：数据保存在本机，离线可用；登录后同步到自托管的后端（Hono + PostgreSQL / PGlite），多设备共用一份账本
 - **Vitest + oxlint**：测试与代码检查
 
 金额统一以「分」为单位的整数存储，避免浮点误差。

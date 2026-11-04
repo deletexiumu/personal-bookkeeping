@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { getAccount, resetAccountCache } from '../app/account'
 import { db } from '../db'
+import { addTransaction } from '../db/transactions'
 
 function json(status: number, body: unknown) {
   return new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -23,6 +24,9 @@ function fakeServer(overrides: Record<string, () => Response> = {}) {
     if (path === '/auth/login' || path === '/auth/register') return json(200, { user })
     if (path === '/auth/me') return json(200, { user })
     if (path === '/auth/logout') return json(204, null)
+    if (path.startsWith('/sync/pull')) return json(200, { changes: [], cursor: 0, more: false })
+    if (path === '/sync/push') return json(200, { accepted: body.changes.length, conflicts: [] })
+    if (path === '/sync/status') return json(200, { tables: {}, limit: 200000 })
     return json(404, { error: { code: 'not_found', message: '接口不存在' } })
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -105,11 +109,12 @@ describe('登录与账号', () => {
   it('退出登录', async () => {
     localStorage.setItem('taozhubu:account', JSON.stringify({ server: '', user }))
     const calls = fakeServer()
-    vi.stubGlobal('confirm', () => true)
     window.location.hash = '#/settings'
     const u = userEvent.setup()
     render(<App />)
     await u.click(await screen.findByRole('button', { name: '退出登录' }))
+    const dialog = await screen.findByRole('dialog', { name: '退出登录' })
+    await u.click(within(dialog).getByRole('button', { name: '退出登录' }))
     expect(await screen.findByRole('link', { name: '登录' })).toBeInTheDocument()
     expect(calls.some((c) => c.url === '/api/auth/logout' && c.method === 'POST')).toBe(true)
     expect(getAccount()).toEqual({ server: '' })
@@ -148,5 +153,41 @@ describe('登录与账号', () => {
     await u.click(within(pw).getByRole('button', { name: '修改密码' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(calls.find((c) => c.url === '/api/auth/password')?.body).toEqual({ currentPassword: 'old password', newPassword: 'new password' })
+  })
+
+  it('本机已有数据时，登录后先问怎么同步；选合并后上传本机数据', async () => {
+    localStorage.setItem('taozhubu:account', JSON.stringify({ server: '', user }))
+    await addTransaction(db, { type: 'expense', amount: 1234, categoryId: 1, accountId: 1, date: '2026-11-04', note: '本机' })
+    const cloudRecord = { table: 'transactions', uid: 'cloud-1', modifiedAt: 1, rev: 1, data: { type: 'income', amount: 1, date: '2026-11-01', accountUid: 'default-account-1' } }
+    const calls = fakeServer({
+      '/sync/status': () => json(200, { tables: { transactions: { records: 3 } }, limit: 200000 }),
+      '/sync/pull?since=0': () => json(200, { changes: [cloudRecord], cursor: 1, more: false }),
+    })
+    window.location.hash = '#/settings'
+    const u = userEvent.setup()
+    render(<App />)
+    const dialog = await screen.findByRole('dialog', { name: '同步这台设备的数据' })
+    expect(await within(dialog).findByText(/云端账号 knowing@example.com 里有 3 笔/)).toBeInTheDocument()
+    expect(calls.some((c) => c.url === '/api/sync/push')).toBe(false)
+    await u.click(within(dialog).getByRole('button', { name: /合并到云端/ }))
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/sync/push')).toBe(true))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const push = calls.find((c) => c.url === '/api/sync/push')
+    expect((push!.body as { changes: { table: string; data: { note?: string } }[] }).changes).toContainEqual(
+      expect.objectContaining({ table: 'transactions', data: expect.objectContaining({ note: '本机', accountUid: 'default-account-1' }) }),
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /立即同步/ })).toHaveTextContent('已同步'))
+    expect(await db.transactions.where('uid').equals('cloud-1').count()).toBe(1)
+  })
+
+  it('登录后本机记一笔，2 秒后自动推送', async () => {
+    localStorage.setItem('taozhubu:account', JSON.stringify({ server: '', user }))
+    const calls = fakeServer()
+    window.location.hash = '#/settings'
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /立即同步/ })).toHaveTextContent('已同步'))
+    await addTransaction(db, { type: 'expense', amount: 500, categoryId: 1, accountId: 1, date: '2026-11-04', note: '自动' })
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/sync/push')).toBe(true), { timeout: 4000 })
+    await waitFor(() => expect(screen.getByRole('button', { name: /立即同步/ })).not.toHaveTextContent('待同步'))
   })
 })

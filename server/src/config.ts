@@ -23,6 +23,8 @@ const envSchema = z.object({
    * Web 端与接口同源，不需要列在这里。跨域请求只能用 Bearer 令牌，不带 Cookie。
    */
   CORS_ORIGINS: z.string().default('tauri://localhost,http://tauri.localhost,https://tauri.localhost'),
+  /** 每个账号在云端最多存多少条记录（流水、分类等合计，含删除记录），防止滥用 */
+  SYNC_MAX_RECORDS: z.coerce.number().int().min(1000).default(200000),
 })
 
 export interface Config {
@@ -34,6 +36,7 @@ export interface Config {
   cookieSecure: boolean
   trustProxy: boolean
   corsOrigins: string[]
+  syncMaxRecords: number
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -52,5 +55,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     cookieSecure: e.COOKIE_SECURE,
     trustProxy: e.TRUST_PROXY,
     corsOrigins: e.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean),
+    syncMaxRecords: e.SYNC_MAX_RECORDS,
   }
 }
