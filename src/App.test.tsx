@@ -285,6 +285,38 @@ describe('App', () => {
     })
   })
 
+  describe('设置', () => {
+    afterEach(() => {
+      delete document.documentElement.dataset.theme
+      delete document.documentElement.dataset.money
+    })
+
+    it('切换主题和金额颜色，记在本机', async () => {
+      window.location.hash = '#/settings'
+      const user = userEvent.setup()
+      render(<App />)
+      const theme = await screen.findByRole('radiogroup', { name: '主题' })
+      expect(within(theme).getByRole('radio', { name: '跟随系统' })).toHaveAttribute('aria-checked', 'true')
+      await user.click(within(theme).getByRole('radio', { name: '深色' }))
+      expect(document.documentElement.dataset.theme).toBe('dark')
+      await user.click(screen.getByRole('radio', { name: '红收绿支' }))
+      expect(document.documentElement.dataset.money).toBe('red-income')
+      expect(JSON.parse(localStorage.getItem('taozhubu:preferences')!)).toEqual({ theme: 'dark', moneyColors: 'red-income' })
+      await user.click(within(theme).getByRole('radio', { name: '跟随系统' }))
+      expect(document.documentElement.dataset.theme).toBeUndefined()
+    })
+
+    it('许可与授权', async () => {
+      window.location.hash = '#/settings'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: /许可与授权/ }))
+      const dialog = screen.getByRole('dialog', { name: '许可与授权' })
+      expect(within(dialog).getByText(/PolyForm Noncommercial/)).toBeInTheDocument()
+      expect(within(dialog).getByRole('link', { name: '申请商业授权' })).toHaveAttribute('href', expect.stringContaining('COMMERCIAL.md'))
+    })
+  })
+
   describe('分析', () => {
     it('KPI 与上月对比，点击分类和柱子下钻，跳到带筛选的明细', async () => {
       await db.open()
@@ -525,6 +557,21 @@ describe('App', () => {
       const json = JSON.parse(await blobs[0].text())
       expect(json).toMatchObject({ app: 'taozhubu', format: 1 })
       expect(json.data.transactions).toHaveLength(1)
+      click.mockRestore()
+    })
+
+    it('设置页导出 CSV 流水', async () => {
+      await addTransaction(db, { type: 'expense', amount: 3250, categoryId: 1, accountId: 1, date: '2026-11-04', merchant: '星巴克' })
+      const blobs: Blob[] = []
+      Object.assign(URL, { createObjectURL: vi.fn((b: Blob) => (blobs.push(b), 'blob:csv')), revokeObjectURL: vi.fn() })
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+      window.location.hash = '#/settings'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: '导出流水（CSV）' }))
+      expect(await screen.findByText('已导出 1 条流水')).toBeInTheDocument()
+      const text = await blobs[0].text()
+      expect(text).toContain('2026-11-04,,支出,32.50,餐饮,现金,,星巴克,,,手动')
       click.mockRestore()
     })
 

@@ -39,7 +39,7 @@ export default defineConfig({
     react(),
     VitePWA({
       disable: isTauri,
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       workbox: {
         // 预缓存 Inter 拉丁字符子集，离线时金额数字字体不回退
         globPatterns: ['**/*.{js,css,html}', 'assets/inter-latin-wght-normal-*.woff2'],

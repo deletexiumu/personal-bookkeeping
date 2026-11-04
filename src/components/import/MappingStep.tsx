@@ -210,7 +210,7 @@ export function MappingStep(props: Props) {
                     {shortDate(row.date, row.time)} · {account?.name ?? '未知账户'} · {category?.name ?? '待分类'}
                   </span>
                 </div>
-                <span className={`t-num-m ${row.type === 'income' ? 'text-income' : ''}`}>
+                <span className={`t-num-m ${row.type === 'income' ? 'amount-income' : 'amount-expense'}`}>
                   {row.type === 'income' ? '+' : '-'}
                   {formatCents(row.amount)}
                 </span>

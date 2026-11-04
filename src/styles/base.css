@@ -154,3 +154,12 @@ a {
 .text-warning {
   color: var(--semantic-warning);
 }
+
+/* 流水金额，颜色跟随「设置 → 外观 → 金额颜色」 */
+.amount-income {
+  color: var(--amount-income);
+}
+
+.amount-expense {
+  color: var(--amount-expense);
+}

@@ -520,10 +520,75 @@ button.settings-item {
   color: var(--brand-primary);
 }
 
-.settings-about {
+.settings-item:has(.settings-item-value) {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+/* 外观等表单式设置：标题在左，分段控件在右；窄屏上下排列 */
+.settings-form {
   display: grid;
-  gap: var(--space-1);
-  padding: var(--space-4) var(--space-5);
+}
+
+.settings-field {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.settings-field + .settings-field {
+  border-top: 1px solid var(--border-default);
+}
+
+.settings-field-label {
+  display: grid;
+  gap: 2px;
+}
+
+@media (min-width: 768px) {
+  .settings-field {
+    grid-template-columns: 1fr minmax(0, 320px);
+    align-items: center;
+  }
+}
+
+/* 许可与授权弹窗 */
+.license {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.license-block {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.license-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.license-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.license-list svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.license-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.license-links .btn {
+  flex: 1;
 }
 
 @media (min-width: 768px) {

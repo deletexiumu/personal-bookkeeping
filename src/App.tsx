@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useMemo, useState } from 'react'
+import { usePwaUpdatePrompt } from './app/pwa'
 import { useRoute } from './app/router'
 import { useHotkey } from './app/useHotkey'
 import { AppShell } from './components/layout/AppShell'
@@ -54,6 +55,7 @@ export default function App() {
 
   return (
     <ToastProvider>
+      <PwaUpdatePrompt />
       <AppShell route={route} onQuickAdd={openQuickAdd}>
       {page}
       <Dialog open={quickAddOpen} title="记一笔" onClose={closeQuickAdd}>
@@ -62,4 +64,10 @@ export default function App() {
       </AppShell>
     </ToastProvider>
   )
+}
+
+/** 在 ToastProvider 里订阅 Service Worker 的更新通知 */
+function PwaUpdatePrompt() {
+  usePwaUpdatePrompt()
+  return null
 }

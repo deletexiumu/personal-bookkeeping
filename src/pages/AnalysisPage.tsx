@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChartNoAxesColumn } from 'lucide-react'
+import { ChartNoAxesColumn, Download } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { BudgetCard } from '../components/analysis/BudgetCard'
 import { DrillDialog } from '../components/analysis/DrillDialog'
@@ -10,11 +10,15 @@ import { TrendChart } from '../components/analysis/TrendChart'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { PageHeader } from '../components/layout/AppShell'
 import { makeLookup } from '../components/transactions/display'
+import { Button } from '../components/ui/Button'
+import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
 import { listBudgets } from '../db/budgets'
 import { listByMonth, listByRange } from '../db/transactions'
 import { categoryShares, merchantTop, periodStats, trendSeries, type Drill, type TrendPoint } from '../lib/analysis'
 import { monthOf, today } from '../lib/date'
+import { downloadText } from '../lib/download'
+import { csvFileName, transactionsToCsv } from '../lib/exportCsv'
 import { bucketsOf, COMPARE_LABELS, elapsedDays, periodLabel, periodOf, shiftPeriod, type Period } from '../lib/period'
 import type { Account, Category, CategoryType, Transaction } from '../types'
 
@@ -48,6 +52,7 @@ function dailyAverage(expense: number, period: Period, todayDate: string): numbe
  * KPI 与上一期对比；收支趋势、分类构成、商户排行、预算执行，点击任意图形下钻到对应流水。
  */
 export function AnalysisPage({ categories, accounts }: Props) {
+  const toast = useToast()
   const todayDate = today()
   const [period, setPeriod] = useState<Period>(() => periodOf('month', todayDate))
   const [type, setType] = useState<CategoryType>('expense')
@@ -91,9 +96,22 @@ export function AnalysisPage({ categories, accounts }: Props) {
       drill: { title: `${p.title}${grouped ? '收支' : typeLabel}`, start: p.start, end: p.end, type: grouped ? undefined : type },
     })
 
+  function exportPeriod() {
+    downloadText(csvFileName(period), transactionsToCsv(rows, categories, accounts), 'text/csv;charset=utf-8')
+    toast.show({ message: `已导出${label}的 ${rows.length} 条流水` })
+  }
+
   return (
     <div className="page analysis-page">
-      <PageHeader title="分析" />
+      <PageHeader
+        title="分析"
+        actions={
+          <Button size="sm" onClick={exportPeriod} disabled={rows.length === 0}>
+            <Download size={16} aria-hidden="true" />
+            导出 CSV
+          </Button>
+        }
+      />
       <PeriodBar period={period} onPeriodChange={setPeriod} type={type} onTypeChange={setType} />
       <KpiRow current={stats} previous={previousStats} compareLabel={COMPARE_LABELS[period.kind]} average={average} />
 
