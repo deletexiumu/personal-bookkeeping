@@ -44,11 +44,12 @@ docker run -d -p 8080:8080 taozhubu
 
 | 仓库文件 | 服务器位置 | 作用 |
 | --- | --- | --- |
-| `deploy/server/docker-compose.yml` | `/opt/taozhubu/docker-compose.yml` | 容器 `taozhubu-web`，不占宿主端口，只挂 `pigsty_pigsty` 网络 |
-| `deploy/server/deploy.sh` | `/opt/taozhubu/deploy.sh` | 拉镜像、重建容器、等健康检查，不通过就回滚到上一个标签 |
+| `deploy/server/docker-compose.yml` | `/opt/taozhubu/docker-compose.yml` | 容器 `taozhubu-web`（前端）和 `taozhubu-api`（后端），不占宿主端口，只挂 `pigsty_pigsty` 网络 |
+| `deploy/server/api.env.example` | `/opt/taozhubu/api.env` | 后端配置（数据库连接串、注册开关），复制后按需修改；不填用内嵌数据库，数据在 `/opt/taozhubu/data` |
+| `deploy/server/deploy.sh` | `/opt/taozhubu/deploy.sh` | 拉两个镜像、重建容器、等两个容器都健康，不通过就回滚到上一个标签 |
 | `deploy/server/site.conf.template` | `/opt/pigsty/nginx/conf.d/taozhubu.conf` | pigsty-nginx 的站点配置模板，把 `__DOMAIN__` 换成实际域名后放到服务器 |
 
-请求链路：宿主 nginx 在 443 端口按 SNI 分流，转给 pigsty-nginx（`127.0.0.1:4433`），再按容器名转给 `taozhubu-web:8080`。证书由 certbot 的 dns-cloudflare 插件签发，和服务器上其他站点一样自动续期。
+请求链路：宿主 nginx 在 443 端口按 SNI 分流，转给 pigsty-nginx（`127.0.0.1:4433`），再按容器名转给 `taozhubu-web:8080`；`/api/` 开头的请求转给后端 `taozhubu-api:8787`。证书由 certbot 的 dns-cloudflare 插件签发，和服务器上其他站点一样自动续期。
 
 **自动部署**：合并到 `main` 后，`docker.yml` 推完镜像，`deploy` 任务用 SSH 登录服务器，传入本次提交的镜像标签 `sha-xxxxxxx`。服务器的 `/root/.ssh/authorized_keys` 用强制命令限定这把密钥，登录后只能执行 `deploy.sh`，传入的内容只当作镜像标签，标签格式不对会被拒绝。
 
@@ -72,6 +73,23 @@ restrict,command="/opt/taozhubu/deploy.sh" ssh-ed25519 AAAA... taozhubu-deploy@g
 ```
 
 **手动部署或回滚**：在服务器上运行 `bash /opt/taozhubu/deploy.sh`，不带参数部署 `edge`，也可以指定标签，例如 `bash /opt/taozhubu/deploy.sh sha-1a2b3c4` 或 `0.2.0`。当前标签记在 `/opt/taozhubu/.env`。
+
+**首次启用后端**（服务器上做一次）：
+
+1. 把 `deploy/server/` 下的 `docker-compose.yml`、`deploy.sh` 复制到 `/opt/taozhubu/`，用 `site.conf.template` 重新生成 nginx 站点配置并 reload（见下一段）。
+2. 选数据库。用内嵌数据库不需要任何配置，`deploy.sh` 会建好 `/opt/taozhubu/data`。用 pigsty 的 PostgreSQL 时，先建库和用户，再写 `/opt/taozhubu/api.env`：
+
+   ```bash
+   # 在能连 PostgreSQL 的地方执行（例如 pigsty 的管理节点），密码自己生成
+   psql -c "CREATE USER taozhubu WITH PASSWORD '强密码'" -c "CREATE DATABASE taozhubu OWNER taozhubu"
+   cp deploy/server/api.env.example /opt/taozhubu/api.env && chmod 600 /opt/taozhubu/api.env
+   # 编辑 api.env，填 DATABASE_URL=postgres://taozhubu:强密码@数据库主机:5432/taozhubu
+   ```
+
+   数据库主机要能从 `pigsty_pigsty` 网络访问到。表结构在后端启动时自动创建。
+3. 运行 `bash /opt/taozhubu/deploy.sh`，然后访问 `https://<你的域名>/api/healthz`，返回 `{"status":"ok"}` 即可。
+
+后端的配置项、接口和管理命令（生成邀请码、重置密码）见 [server.md](./server.md)。
 
 **改了 `deploy/server/` 下的文件**：自动部署只更新镜像，不同步这些配置文件，需要手动复制到服务器。改了 nginx 配置后，先运行 `docker exec pigsty-nginx nginx -t`，通过后再运行 `docker exec pigsty-nginx nginx -s reload`。
 
@@ -101,14 +119,14 @@ pnpm desktop:build    # 打本机平台的安装包
 
 当前是本地优先：数据只在本机。要提供接口，有两种形态，建议分两步走：
 
-1. **自托管同步服务（建议优先做）**：新增 `apps/api`（推荐 Hono + SQLite，可切 PostgreSQL），提供 REST 接口和 OpenAPI 文档，同时作为多端同步的后端。打包成 Docker 镜像，和 Web 镜像放在同一个 `docker-compose.yml` 里一起部署。**微信小程序读不到浏览器里的数据，跨端只能经过这个服务**，所以它是小程序上线的前提。小程序要求后端是 HTTPS 且域名已 ICP 备案，并在小程序后台配置为合法请求域名。
+1. **自托管同步服务（进行中）**：后端在 `server/`（Hono，PostgreSQL 或内嵌 PGlite），已有账号与登录会话，同步接口在做，说明见 [server.md](./server.md)。它提供 REST 接口，同时作为多端同步的后端，打包成镜像 `personal-bookkeeping-api`，和 Web 镜像放在同一个 `docker-compose.yml` 里一起部署。**微信小程序读不到浏览器里的数据，跨端只能经过这个服务**，所以它是小程序上线的前提。小程序要求后端是 HTTPS 且域名已 ICP 备案，并在小程序后台配置为合法请求域名。
 2. **桌面端本地 API（可选）**：在 Tauri 里开一个只监听 `127.0.0.1` 的 HTTP 接口，方便脚本、快捷指令、自动化工具写入账目，不需要服务器。
 
 两种形态共用 `packages/api-contract` 里的接口定义，见下一节。
 
 ## 2. 多端代码组织
 
-现在仓库只有一个前端，保持单包结构最省事。等到开始做小程序或 API 时，再切换为 pnpm workspaces 的 monorepo：
+仓库已是 pnpm workspace：前端仍在根目录，后端是 `server/` 包（`pnpm --filter @taozhubu/server …`）。等开始做小程序、需要共用代码时，再整理成下面的结构：
 
 ```
 apps/
@@ -133,9 +151,9 @@ CI 在切换 monorepo 时只需把 `pnpm build` 换成 `pnpm -r build`（或 `pn
 
 | 文件 | 触发 | 做什么 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | PR、推送 `main`、手动 | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
+| `.github/workflows/ci.yml` | PR、推送 `main`、手动 | lint、测试、构建；后端在内嵌 PGlite 和 PostgreSQL 16 上各跑一遍测试；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件或 `server/` 时额外验证镜像能构建并启动 |
 | `.github/workflows/deploy-web.yml` | 推送 `main`、手动 | 构建并部署到 GitHub Pages |
-| `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io；`main` 的镜像推送完成后经 SSH 部署到自托管服务器（见 1.2.1） |
+| `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建前端和后端两个多架构镜像并推送到 ghcr.io；`main` 的镜像推送完成后经 SSH 部署到自托管服务器（见 1.2.1） |
 | `.github/workflows/release.yml` | `v*` 标签、手动 | 创建草稿 Release，构建 macOS（arm64 / x64）、Windows 安装包和 Web 静态包并上传；手动触发时只构建，产物在 Actions 页面下载 |
 | `.github/workflows/auto-merge.yml` | CI 完成后 | 仓库所有者发起的 PR 在 CI 通过后自动合并，并派发 main 上的 CI、Web 部署和 Docker 构建；其他人的 PR 需手动合并（见 3.1） |
 | `.github/dependabot.yml` | 定时 | 自动提 PR 升级 Actions、npm、Cargo 依赖 |

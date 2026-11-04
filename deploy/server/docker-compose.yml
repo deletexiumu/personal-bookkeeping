@@ -1,8 +1,9 @@
-# 陶朱簿 Web 自托管部署（放在服务器的 /opt/taozhubu/）。
+# 陶朱簿自托管部署（放在服务器的 /opt/taozhubu/）：Web 前端 + 后端 API。
 # 对外域名不写进仓库，只配置在服务器的 nginx 站点和仓库 Secret DEPLOY_URL 里。
-# 链路：宿主 nginx stream（:443 按 SNI 分流）→ pigsty-nginx（:4433）→ taozhubu-web:8080
+# 链路：宿主 nginx stream（:443 按 SNI 分流）→ pigsty-nginx（:4433）→ taozhubu-web:8080，/api/ → taozhubu-api:8787
 # 不占宿主端口，只挂 pigsty_pigsty 网络，由 pigsty-nginx 按容器名反代。
-# 镜像标签由 deploy.sh 写进同目录 .env 的 TAOZHUBU_TAG，默认 edge（main 最新）。
+# 镜像标签由 deploy.sh 写进同目录 .env 的 TAOZHUBU_TAG，默认 edge（main 最新），两个镜像标签相同。
+# 后端配置放在同目录的 api.env（参考 api.env.example），不进仓库；没有这个文件时用内嵌数据库，数据在 ./data。
 services:
   web:
     image: ghcr.io/deletexiumu/personal-bookkeeping:${TAOZHUBU_TAG:-edge}
@@ -10,6 +11,26 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    networks:
+      - pigsty
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    image: ghcr.io/deletexiumu/personal-bookkeeping-api:${TAOZHUBU_TAG:-edge}
+    container_name: taozhubu-api
+    read_only: true
+    tmpfs:
+      - /tmp
+    env_file:
+      - path: api.env
+        required: false
+    volumes:
+      - ./data:/data
     networks:
       - pigsty
     restart: unless-stopped

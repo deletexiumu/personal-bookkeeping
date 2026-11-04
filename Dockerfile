@@ -4,9 +4,11 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 RUN corepack enable
-COPY package.json pnpm-lock.yaml ./
+# 仓库是 pnpm workspace（后端在 server/），锁文件包含它，所以一起复制 workspace 配置和后端的 package.json
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY server/package.json server/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --filter personal-bookkeeping
 COPY . .
 # 可选：部署在子路径时传入，例如 --build-arg BASE_PATH=/ledger/
 ARG BASE_PATH=/

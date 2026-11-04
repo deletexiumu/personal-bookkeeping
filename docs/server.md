@@ -1,0 +1,73 @@
+# 后端服务
+
+`server/` 是陶朱簿的后端：账号、登录会话，以后加上多端同步和开放接口。整体方案（登录方式、同步策略、分阶段计划）见用户体系方案文档，这里只讲代码和运维。
+
+- 运行时：Node 22，框架 Hono，参数校验 zod，数据访问 Drizzle ORM。
+- 数据库：配了 `DATABASE_URL` 就用 PostgreSQL；不配时用内嵌的 PGlite（PostgreSQL 编译成 WebAssembly），数据存在 `DATA_DIR` 目录里，不需要单独装数据库。两种情况跑的是同一套迁移。
+- 所有接口都在 `/api` 下。线上由反向代理把同一域名的 `/api/` 转给后端，Web 端同源访问，不需要 CORS。
+
+## 本地开发
+
+```bash
+pnpm install                                   # 在仓库根目录，前后端依赖一起装
+cd server
+DATA_DIR=.data COOKIE_SECURE=false pnpm dev    # http://localhost:8787/api/healthz
+pnpm test                                      # 默认用内存里的 PGlite
+TEST_DATABASE_URL=postgres://… pnpm test       # 换成真实的 PostgreSQL（会清空表）
+pnpm typecheck
+```
+
+改了 `src/db/schema.ts` 后运行 `pnpm db:generate` 生成迁移 SQL（`server/drizzle/`），连同 schema 一起提交。服务启动时自动执行未执行过的迁移。迁移只做加法（加表、加列），这样部署失败回滚到旧镜像时旧代码仍能用新库。
+
+## 配置（环境变量）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `DATABASE_URL` | 无 | PostgreSQL 连接串；不填用内嵌 PGlite |
+| `DATA_DIR` | `/data` | 内嵌数据库的数据目录 |
+| `PORT` | `8787` | 监听端口 |
+| `REGISTRATION` | `open` | `open` 开放注册、`invite` 需要邀请码、`closed` 关闭注册 |
+| `SESSION_TTL_DAYS` | `30` | 会话有效天数，使用中自动续期 |
+| `COOKIE_SECURE` | `true` | 会话 Cookie 是否只走 HTTPS；本地用 http 调试时设 `false` |
+| `TRUST_PROXY` | `true` | 是否信任反向代理传来的 `X-Real-IP`，用于按 IP 限频 |
+
+## 接口
+
+错误统一返回 `{ "error": { "code": "...", "message": "给用户看的中文提示", "field"?: "出错的字段" } }`。
+
+| 方法与路径 | 说明 |
+| --- | --- |
+| `GET /api/healthz` | 健康检查（会查一次数据库） |
+| `GET /api/auth/config` | 注册开关：`{ registration }` |
+| `POST /api/auth/register` | `{ email, password, inviteCode?, tokenMode? }` 注册并登录 |
+| `POST /api/auth/login` | `{ email, password, tokenMode? }` 登录 |
+| `POST /api/auth/logout` | 退出当前设备 |
+| `GET /api/auth/me` | 当前账号 |
+| `POST /api/auth/password` | `{ currentPassword, newPassword }` 改密码，其他设备下线 |
+| `GET /api/auth/sessions` | 已登录设备列表 |
+| `DELETE /api/auth/sessions/:id` | 让某台设备下线 |
+| `DELETE /api/auth/account` | `{ password }` 注销账号，删除全部云端数据 |
+
+**令牌怎么传**：`tokenMode` 默认 `cookie`，令牌写进 HttpOnly、SameSite=Strict、Path=/api 的 Cookie，页面脚本读不到，Web 端用这个。桌面端和小程序不同源，传 `tokenMode: "bearer"`，令牌在响应的 `token` 字段，之后放在 `Authorization: Bearer` 头里。数据库只存令牌的 SHA-256。
+
+**安全措施**：密码用 scrypt 加盐哈希；邮箱不存在时也跑一次哈希，响应时间不暴露邮箱是否注册；同一邮箱 15 分钟内失败 10 次、同一 IP 15 分钟内尝试 50 次后限频；用 Cookie 时改动类请求必须是 JSON（配合 SameSite=Strict 防跨站请求）；接口响应一律 `Cache-Control: no-store`。
+
+## 管理命令
+
+```bash
+node dist/admin.js invite 7               # 生成 7 天有效的邀请码
+node dist/admin.js reset-password 邮箱     # 重置为随机密码，所有设备下线
+node dist/admin.js stats                  # 账号数
+```
+
+**用内嵌数据库时**，同一时间只能有一个进程打开数据目录，两个进程同时写会损坏数据。所以要先停服务，在一个临时容器里执行，再启动（在 `/opt/taozhubu/` 下）：
+
+```bash
+docker compose stop api
+docker compose run --rm api node dist/admin.js invite 7
+docker compose start api
+```
+
+服务运行时会在数据目录里放一个每 10 秒刷新的锁文件，忘了停服务时管理命令会拒绝执行并提示上面的命令。
+
+**用 PostgreSQL 时**没有这个限制，直接对运行中的容器执行：`docker exec taozhubu-api node dist/admin.js invite 7`。

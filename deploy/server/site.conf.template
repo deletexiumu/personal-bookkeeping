@@ -2,6 +2,7 @@
 # 用法：把 __DOMAIN__ 换成实际域名，存到服务器的 /opt/pigsty/nginx/conf.d/taozhubu.conf：
 #   sed 's/__DOMAIN__/你的域名/g' site.conf.template > /opt/pigsty/nginx/conf.d/taozhubu.conf
 # 链路：宿主 nginx stream（:443 ssl_preread + proxy_protocol）→ pigsty-nginx（:4433）→ taozhubu-web:8080
+#       /api/ 转给后端 taozhubu-api:8787（与前端同源，不需要 CORS）
 # 证书：certbot dns-cloudflare 签发，位于 /etc/letsencrypt/live/__DOMAIN__/
 
 # HTTP：acme-challenge，其余跳转 HTTPS
@@ -28,6 +29,19 @@ server {
     # 容器名在每次请求时解析，容器重建或暂未启动时 nginx 也能正常 reload
     resolver 127.0.0.11 valid=10s ipv6=off;
     set $taozhubu_upstream http://taozhubu-web:8080;
+    set $taozhubu_api http://taozhubu-api:8787;
+
+    # 后端接口：proxy_pass 用变量时原样转发完整路径（/api/...）
+    location /api/ {
+        client_max_body_size 2m;
+        proxy_pass $taozhubu_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        # 后端按 X-Real-IP 限频；proxy_protocol 下真实客户端地址在 $proxy_protocol_addr
+        proxy_set_header X-Real-IP $proxy_protocol_addr;
+        proxy_set_header X-Forwarded-For $proxy_protocol_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 
     location / {
         proxy_pass $taozhubu_upstream;

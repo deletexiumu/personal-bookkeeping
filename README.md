@@ -80,6 +80,7 @@ pnpm desktop:build  # 打本机平台的安装包
 .
 ├── .github/workflows/ # CI、Web 部署、Docker 镜像、桌面端发布
 ├── deploy/docker/     # 自托管 nginx 配置
+├── deploy/server/     # 自托管服务器的 compose、部署脚本与站点配置模板
 ├── docs/              # 设计与需求文档
 ├── public/            # 图标等静态资源
 ├── src/
@@ -88,6 +89,7 @@ pnpm desktop:build  # 打本机平台的安装包
 │   ├── lib/           # 金额、日期等工具函数
 │   └── types.ts       # 数据类型定义
 ├── src-tauri/         # 桌面端（Tauri 2）外壳
+├── server/            # 后端：账号、登录会话、云同步（Hono，见 docs/server.md）
 ├── Dockerfile         # 自托管镜像
 └── vite.config.ts     # Vite、PWA 与 Vitest 配置
 ```

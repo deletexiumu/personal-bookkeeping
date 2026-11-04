@@ -1,0 +1,10 @@
+# 前端在仓库根目录，后端在 server/
+packages:
+  - server
+
+# drizzle-kit 依赖的 esbuild 不需要运行安装脚本（平台二进制由可选依赖提供）
+ignoredBuiltDependencies:
+  - esbuild
+
+# pnpm deploy（打包后端镜像）需要；没有 workspace: 依赖时对安装结果没有影响
+injectWorkspacePackages: true

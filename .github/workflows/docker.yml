@@ -1,5 +1,7 @@
-# 构建自托管用的 Docker 镜像并推送到 GitHub Container Registry（ghcr.io）。
-# main 分支推送得到 :edge 和 :sha-xxxxxxx，打 v* 标签得到 :x.y.z / :x.y / :latest。推镜像只用内置 GITHUB_TOKEN。
+# 构建自托管用的 Docker 镜像并推送到 GitHub Container Registry（ghcr.io）：
+#   personal-bookkeeping      Web 前端（Dockerfile）
+#   personal-bookkeeping-api  后端：账号、同步（server/Dockerfile）
+# 两个镜像标签相同。main 分支推送得到 :edge 和 :sha-xxxxxxx，打 v* 标签得到 :x.y.z / :x.y / :latest。推镜像只用内置 GITHUB_TOKEN。
 # main 的镜像推送完成后，deploy 任务经 SSH 部署到自托管服务器，需要 DEPLOY_* 系列 Secret，没配时跳过。
 name: Docker 镜像
 
@@ -15,10 +17,20 @@ permissions:
 
 jobs:
   image:
+    name: 镜像 ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: web
+            image: ghcr.io/${{ github.repository }}
+            file: Dockerfile
+          - name: api
+            image: ghcr.io/${{ github.repository }}-api
+            file: server/Dockerfile
     # 只取消过时的镜像构建；concurrency 放在任务级，避免新推送把正在跑的 deploy 中途取消
     concurrency:
-      group: docker-${{ github.ref }}
+      group: docker-${{ matrix.name }}-${{ github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
@@ -32,7 +44,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ matrix.image }}
           tags: |
             type=edge,branch=main
             type=semver,pattern={{version}}
@@ -41,12 +53,13 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   # main 的镜像推送完成后，经 SSH 部署到自托管服务器（见 docs/deployment.md 的 1.2.1 节）。
   # 服务器上的 authorized_keys 用强制命令把这把密钥限定为只能执行 /opt/taozhubu/deploy.sh，
