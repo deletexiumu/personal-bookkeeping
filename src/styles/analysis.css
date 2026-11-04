@@ -1,0 +1,495 @@
+/* 分析页（M03 / D02）：筛选行、KPI、趋势柱状图、排行横条、预算执行、下钻弹窗 */
+
+/* ---------- 筛选行 ---------- */
+.period-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.period-kinds {
+  flex: 1 1 100%;
+}
+
+.period-switcher {
+  flex: 1;
+  justify-content: space-between;
+}
+
+.period-label {
+  min-width: 120px;
+  text-align: center;
+}
+
+.period-range {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.period-range .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.period-types {
+  flex: none;
+  min-width: 120px;
+}
+
+@media (min-width: 768px) {
+  .period-kinds {
+    flex: none;
+    min-width: 260px;
+  }
+
+  .period-switcher {
+    flex: none;
+  }
+
+  .period-range {
+    flex: none;
+  }
+
+  .period-types {
+    margin-left: auto;
+  }
+}
+
+/* ---------- KPI ---------- */
+.analysis-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.stat-tile {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+/* 单独展示的大数字用等比数字，不用等宽 */
+.stat-value {
+  overflow: hidden;
+  font-family: var(--font-num);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+  font-variant-numeric: proportional-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+}
+
+.kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+@media (min-width: 1024px) {
+  .analysis-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .stat-tile {
+    padding: var(--space-5);
+  }
+
+  .stat-value {
+    font-size: 26px;
+    line-height: 34px;
+  }
+}
+
+/* ---------- 卡片网格 ---------- */
+.analysis-grid,
+.analysis-col {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .analysis-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.chart-card {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .chart-card {
+    padding: var(--space-5);
+  }
+}
+
+.chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.chart-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.chart-empty {
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.text-link {
+  color: var(--brand-primary);
+}
+
+/* ---------- 图例与系列颜色 ---------- */
+.chart-legend {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.legend-expense,
+.bar-expense {
+  background: var(--chart-expense);
+}
+
+.legend-income,
+.bar-income {
+  background: var(--chart-income);
+}
+
+/* ---------- 柱状图 ---------- */
+.bar-chart {
+  --plot-height: 180px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: var(--plot-height) auto;
+  column-gap: var(--space-2);
+  row-gap: 6px;
+}
+
+@media (min-width: 1024px) {
+  .bar-chart {
+    --plot-height: 220px;
+  }
+}
+
+.bar-chart-y {
+  position: relative;
+  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-chart-y span {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bar-chart-plot {
+  position: relative;
+}
+
+.bar-chart-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--chart-grid);
+}
+
+/* 基线比网格线深一档 */
+.bar-chart-grid:first-child {
+  background: var(--border-default);
+}
+
+.bar-chart-cols {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+
+.bar-col {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 12%;
+  border: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+}
+
+.bar-col[data-active] {
+  background: var(--bg-subtle);
+}
+
+.bar-col:focus-visible {
+  outline-offset: -2px;
+}
+
+.bar {
+  flex: 0 1 24px;
+  min-width: 2px;
+  max-width: 24px;
+  border-radius: 4px 4px 0 0;
+}
+
+.bar-chart-x {
+  grid-column: 2;
+  display: grid;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-chart-x span {
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: var(--space-1);
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 112px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  pointer-events: none;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.chart-tooltip-row .t-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 提示里用短线而不是色块标识系列 */
+.tooltip-key {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+/* ---------- 数据表视图 ---------- */
+.data-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  text-align: left;
+  font-weight: 400;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.data-table tfoot th,
+.data-table tfoot td {
+  font-weight: 600;
+  border-bottom: 0;
+}
+
+.data-table .num {
+  text-align: right;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-primary);
+  text-align: left;
+}
+
+/* ---------- 排行横条 ---------- */
+.ranked-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ranked-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+}
+
+.ranked-row:hover {
+  background: var(--bg-subtle);
+}
+
+.ranked-index {
+  flex: none;
+  width: 32px;
+  text-align: center;
+}
+
+.ranked-main {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ranked-line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.ranked-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranked-amount {
+  flex: none;
+}
+
+.ranked-track {
+  display: block;
+  height: 8px;
+}
+
+.ranked-fill {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+}
+
+/* ---------- 预算执行 ---------- */
+.budget-exec {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.budget-exec-row {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: var(--space-2);
+}
+
+.budget-exec-button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+}
+
+.budget-exec-button:hover {
+  background: var(--bg-subtle);
+}
+
+.budget-exec-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.budget-exec-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* ---------- 下钻弹窗 ---------- */
+.drill {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.drill .day-groups {
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.drill-back {
+  justify-self: start;
+  margin-bottom: var(--space-2);
+}
