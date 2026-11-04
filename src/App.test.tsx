@@ -249,4 +249,35 @@ describe('App', () => {
       expect(saved).toMatchObject({ type: 'expense', icon: 'paw-print', color: 'purple', order: 12 })
     })
   })
+
+  describe('预算', () => {
+    it('设置总预算和分类预算，明细汇总卡显示预算进度', async () => {
+      await db.open()
+      await addTransaction(db, { type: 'expense', amount: 90000, categoryId: 1, accountId: 4, date: today() })
+      window.location.hash = '#/budget'
+      const user = userEvent.setup()
+      render(<App />)
+
+      const total = await screen.findByLabelText('月度总预算（元）')
+      await user.type(total, '1000{Enter}')
+      expect(await screen.findByText('已设置总预算 ¥1,000.00')).toBeInTheDocument()
+      const totalCard = screen.getByRole('region', { name: '总预算' })
+      expect(within(totalCard).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '90')
+      expect(within(totalCard).getByText(/已用 ¥900.00 · 90%/)).toHaveClass('text-warning')
+
+      await user.type(screen.getByLabelText('餐饮预算（元）'), '800{Enter}')
+      await waitFor(async () => expect(await db.budgets.count()).toBe(2))
+      expect(await screen.findByText(/超支 ¥100.00/)).toHaveClass('text-expense')
+
+      // 清空即取消
+      await user.clear(screen.getByLabelText('餐饮预算（元）'))
+      await user.keyboard('{Enter}')
+      await waitFor(async () => expect(await db.budgets.count()).toBe(1))
+
+      window.location.hash = '#/transactions'
+      const summary = await screen.findByRole('region', { name: '本月汇总' })
+      expect(await within(summary).findByRole('progressbar', { name: '本月预算' })).toHaveAttribute('aria-valuenow', '90')
+      expect(within(summary).getByText('月预算 ¥1,000.00')).toBeInTheDocument()
+    })
+  })
 })

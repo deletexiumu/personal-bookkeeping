@@ -283,6 +283,7 @@
 .kpi {
   display: grid;
   gap: var(--space-1);
+  align-content: start;
   min-width: 0;
 }
 
@@ -896,4 +897,142 @@
 
 .tone-option[aria-pressed='true'] {
   border-color: var(--tone);
+}
+
+/* ---------- 汇总卡上的预算 ---------- */
+.kpi-budget {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-2);
+  color: inherit;
+}
+
+.kpi-budget .kpi-label {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* 移动端品牌色卡片里：只显示「月预算 ¥x」和进度 */
+.kpi-budget .kpi-budget-title,
+.kpi-budget .kpi-value {
+  display: none;
+}
+
+.progress-on-brand {
+  background: rgb(255 255 255 / 25%);
+}
+
+.progress-on-brand.progress-ok > span {
+  background: #fff;
+}
+
+.summary .kpi-budget-meta {
+  color: inherit;
+  opacity: 0.85;
+}
+
+@media (max-width: 767px) {
+  .kpi-budget {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .kpi-budget .kpi-label {
+    order: 1;
+  }
+
+  .kpi-budget .kpi-budget-meta {
+    order: 2;
+  }
+
+  .kpi-budget .progress {
+    order: 3;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 768px) {
+  .summary-with-budget {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .kpi-budget {
+    grid-column: auto;
+    gap: var(--space-1);
+  }
+
+  .kpi-budget:hover {
+    border-color: var(--brand-primary);
+  }
+
+  .kpi-budget .kpi-budget-title,
+  .kpi-budget .kpi-value {
+    display: inline;
+  }
+
+  .kpi-budget .kpi-budget-total {
+    display: none;
+  }
+
+  .progress-on-brand {
+    background: var(--bg-subtle);
+  }
+
+  .progress-on-brand.progress-ok > span {
+    background: var(--brand-primary);
+  }
+
+  .summary .kpi-budget-meta {
+    opacity: 1;
+    color: var(--text-tertiary);
+  }
+
+  .summary .kpi-budget-meta.text-warning {
+    color: var(--semantic-warning);
+  }
+
+  .summary .kpi-budget-meta.text-expense {
+    color: var(--semantic-expense);
+  }
+}
+
+/* ---------- 预算页 ---------- */
+.budget-total {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+
+.budget-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.budget-row + .budget-row {
+  border-top: 1px solid var(--border-default);
+}
+
+.budget-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.budget-row-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.budget-input {
+  width: 128px;
+  text-align: right;
+}
+
+.budget-status {
+  margin: 0;
 }
