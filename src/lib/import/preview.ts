@@ -1,5 +1,6 @@
 import type { Account, Category, Transaction } from '../../types'
 import { KEYWORD_DICTIONARY } from './keywords'
+import { CATEGORY_ALIASES } from './templates'
 import { normalizeText, similarity } from './similarity'
 import type { ParsedRow } from './table'
 
@@ -80,7 +81,8 @@ export function buildMerchantHistory(transactions: Transaction[]): Map<string, n
 export function classify(row: ParsedRow, ctx: ClassifyContext): { categoryId: number; source: CategorySource } | undefined {
   const usable = ctx.categories.filter((c) => c.type === row.type && !c.archived && c.id !== undefined)
   if (row.categoryName) {
-    const hit = usable.find((c) => c.name === row.categoryName)
+    const alias = CATEGORY_ALIASES[row.categoryName]
+    const hit = usable.find((c) => c.name === row.categoryName) ?? usable.find((c) => c.name === alias)
     if (hit) return { categoryId: hit.id!, source: 'file' }
   }
   // 没有商户列时用备注（如银行账单的「交易摘要」）
@@ -89,7 +91,7 @@ export function classify(row: ParsedRow, ctx: ClassifyContext): { categoryId: nu
     const id = ctx.merchantHistory.get(`${row.type}:${merchant}`)
     if (id !== undefined && usable.some((c) => c.id === id)) return { categoryId: id, source: 'history' }
   }
-  const text = `${row.merchant ?? ''} ${row.note ?? ''}`.toLowerCase()
+  const text = `${row.merchant ?? ''} ${row.note ?? ''} ${row.kind ?? ''}`.toLowerCase()
   for (const entry of KEYWORD_DICTIONARY) {
     if (entry.type !== row.type) continue
     if (!entry.keywords.some((k) => text.includes(k.toLowerCase()))) continue
@@ -99,14 +101,22 @@ export function classify(row: ParsedRow, ctx: ClassifyContext): { categoryId: nu
   return undefined
 }
 
-/** 文件里的账户名对应到本地账户：完全相同或互相包含，否则用默认账户 */
+/** 钱包内的资金来源对应到账户类型：微信零钱、支付宝余额 / 余额宝 / 花呗 */
+const WALLET_HINTS: [RegExp, Account['type']][] = [
+  [/零钱/, 'wechat'],
+  [/余额宝|账户余额|花呗|支付宝/, 'alipay'],
+]
+
+/** 文件里的账户名对应到本地账户：完全相同、互相包含或钱包类型，否则用默认账户 */
 export function matchAccount(name: string | undefined, accounts: Account[], fallback: number): number {
   if (!name) return fallback
   const active = accounts.filter((a) => !a.archived && a.id !== undefined)
   const exact = active.find((a) => a.name === name)
   if (exact) return exact.id!
   const loose = active.find((a) => name.includes(a.name) || a.name.includes(name))
-  return loose?.id ?? fallback
+  if (loose) return loose.id!
+  const hint = WALLET_HINTS.find(([re]) => re.test(name))?.[1]
+  return active.find((a) => hint && a.type === hint)?.id ?? fallback
 }
 
 export interface PreviewContext extends ClassifyContext {

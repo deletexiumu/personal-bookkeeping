@@ -31,12 +31,12 @@ export function UploadStep({ error, onFile }: Props) {
       >
         <FileUp size={32} aria-hidden="true" />
         <span className="t-title-s">选择账单文件，或拖到这里</span>
-        <span className="t-body-s text-tertiary">支持 CSV / TSV，自动识别 UTF-8 与 GBK 编码；文件只在本机解析，不会上传</span>
+        <span className="t-body-s text-tertiary">支持 CSV / TSV / xlsx，自动识别 UTF-8 与 GBK 编码和微信、支付宝账单；文件只在本机解析，不会上传</span>
         <input
           type="file"
           className="sr-only"
           aria-label="选择账单文件"
-          accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
+          accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={(e) => {
             const file = e.target.files?.[0]
             if (file) onFile(file)

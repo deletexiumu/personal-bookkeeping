@@ -5,6 +5,7 @@ import App from './App'
 import { db } from './db'
 import { addTransaction } from './db/transactions'
 import { today } from './lib/date'
+import { makeXlsx } from './lib/import/testZip'
 
 beforeEach(async () => {
   window.location.hash = ''
@@ -348,13 +349,37 @@ describe('App', () => {
       expect(await screen.findByText('已撤销')).toBeInTheDocument()
     })
 
-    it('xlsx 文件提示先另存为 CSV', async () => {
+    it('旧版 xls 文件提示先另存', async () => {
       window.location.hash = '#/import'
       const user = userEvent.setup({ applyAccept: false })
       render(<App />)
       await user.click(await screen.findByRole('button', { name: /^通用表格(?!导出)/ }))
-      await user.upload(screen.getByLabelText('选择账单文件'), new File(['x'], 'a.xlsx'))
-      expect(await screen.findByRole('alert')).toHaveTextContent('暂时只支持 CSV / TSV')
+      await user.upload(screen.getByLabelText('选择账单文件'), new File(['x'], 'a.xls'))
+      expect(await screen.findByRole('alert')).toHaveTextContent('旧版 xls 请先另存为 xlsx 或 CSV')
+    })
+
+    it('微信 xlsx 账单命中模板，跳过字段映射直接预览', async () => {
+      const bytes = await makeXlsx([
+        ['微信支付账单明细'],
+        [],
+        ['交易时间', '交易类型', '交易对方', '商品', '收/支', '金额(元)', '支付方式', '当前状态', '交易单号', '商户单号', '备注'],
+        ['2026-10-31 12:08:00', '商户消费', '美团外卖', '美团订单', '支出', '¥36.50', '零钱', '支付成功', 'W1', '/', '/'],
+        ['2026-10-27 08:00:00', '零钱充值', '招商银行(1234)', '/', '/', '¥500.00', '招商银行(1234)', '充值完成', 'W2', '/', '/'],
+      ])
+      window.location.hash = '#/import'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: /^微信账单(?!导出)/ }))
+      await user.upload(screen.getByLabelText('选择账单文件'), new File([bytes], '微信支付账单.xlsx'))
+
+      expect(await screen.findByText(/识别为「微信账单」模板 · 2 条/)).toBeInTheDocument()
+      expect(screen.getByLabelText('选择 招商银行(1234)')).not.toBeChecked()
+      expect(screen.getByText('不计收支')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '确认导入' }))
+      expect(await screen.findByRole('heading', { name: '已入账 1 条' })).toBeInTheDocument()
+      const [row] = await db.transactions.toArray()
+      expect(row).toMatchObject({ merchant: '美团外卖', accountId: 4, categoryId: 1, externalId: 'W1' })
+      expect((await db.importBatches.toArray())[0]).toMatchObject({ source: 'wechat', rowCount: 2, importedCount: 1 })
     })
   })
 })

@@ -21,7 +21,6 @@ export const SOURCES: SourceDef[] = [
     hint: '账单中心导出 xlsx / csv',
     icon: MessageCircle,
     tone: 'green',
-    upcoming: 'W4-2',
     guide: ['微信 → 我 → 服务 → 钱包 → 账单', '右上角「常见问题」→「下载账单」→「用于个人对账」', '选择时间范围，账单会发到邮箱或「微信支付」公众号'],
   },
   {
@@ -30,7 +29,6 @@ export const SOURCES: SourceDef[] = [
     hint: '交易明细 csv',
     icon: Wallet,
     tone: 'blue',
-    upcoming: 'W4-2',
     guide: ['支付宝 → 我的 → 账单', '右上角「…」→「开具交易流水证明」→「用于个人对账」', '选择时间范围，账单会发到邮箱（解压密码见支付宝通知）'],
   },
   {

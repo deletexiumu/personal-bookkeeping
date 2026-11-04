@@ -6,8 +6,9 @@ import { db } from '../../db'
 import { commitImport, loadDedupeCandidates, loadMerchantTransactions } from '../../db/imports'
 import type { FieldKey } from '../../lib/import/fields'
 import { buildMerchantHistory, buildPreview, type PreviewItem } from '../../lib/import/preview'
-import { sniffText, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
+import { sniffFile, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
 import { parseRows, type AmountSign, type ColumnMapping } from '../../lib/import/table'
+import type { BuiltinTemplate } from '../../lib/import/templates'
 import type { Account, Category, ImportBatch, ImportSource } from '../../types'
 import { PageHeader } from '../layout/AppShell'
 import { Button, IconButton } from '../ui/Button'
@@ -40,8 +41,12 @@ function readBytes(file: File): Promise<Uint8Array> {
   })
 }
 
-/** 默认入账账户：银行卡账单优先储蓄卡 / 信用卡 */
-function defaultAccountFor(source: ImportSource, accounts: Account[]): number | undefined {
+/** 默认入账账户：模板指定的钱包账户；银行卡账单优先储蓄卡 / 信用卡 */
+function defaultAccountFor(source: ImportSource, accounts: Account[], template?: BuiltinTemplate): number | undefined {
+  if (template) {
+    const wallet = accounts.find((a) => a.type === template.accountType)
+    if (wallet) return wallet.id
+  }
   if (source === 'bank') {
     const card = accounts.find((a) => a.type === 'debit' || a.type === 'credit')
     if (card) return card.id
@@ -77,23 +82,30 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
 
   async function handleFile(file: File) {
     setFileError(null)
-    if (/\.(xlsx?|pdf|zip)$/i.test(file.name)) {
-      setFileError('暂时只支持 CSV / TSV。Excel 文件请先另存为 CSV；微信 xlsx 账单将在后续版本支持。')
+    if (/\.(xls|pdf|zip|rar)$/i.test(file.name)) {
+      setFileError('暂时只支持 CSV / TSV 和 xlsx。旧版 xls 请先另存为 xlsx 或 CSV；压缩包请先解压。')
       return
     }
+    let result: SniffResult
     try {
-      const result = sniffText(await readBytes(file))
-      if (result.table.rows.length === 0) {
-        setFileError('没有读到数据行，请确认文件是带表头的账单表格。')
-        return
-      }
-      setFileName(file.name)
-      setSniff(result)
-      setMapping(result.mapping)
-      setStep('mapping')
-    } catch {
-      setFileError('文件读取失败，请重新选择。')
+      result = await sniffFile(await readBytes(file))
+    } catch (e) {
+      setFileError(e instanceof Error ? `文件读取失败：${e.message}` : '文件读取失败，请重新选择。')
+      return
     }
+    if (result.table.rows.length === 0) {
+      setFileError('没有读到数据行，请确认文件是带表头的账单表格。')
+      return
+    }
+    setFileName(file.name)
+    setSniff(result)
+    setMapping(result.mapping)
+    if (result.template) {
+      // 命中内置模板：跳过字段映射，直接预览
+      const id = defaultAccountFor(result.template.source, accounts, result.template)
+      setAccountId(id)
+      await toPreview(result, result.mapping, id)
+    } else setStep('mapping')
   }
 
   function changeMapping(col: number, field: FieldKey) {
@@ -114,18 +126,21 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     setMapping(next.mapping)
   }
 
-  async function toPreview() {
+  async function toPreview(target = sniff, columns = mapping, account = accountId) {
+    if (!target) return
     // 直接打开导入页时账户可能稍后才加载完
-    const defaultAccountId = accountId ?? defaultAccountFor(source, accounts)
+    const defaultAccountId = account ?? defaultAccountFor(source, accounts, target.template)
     if (defaultAccountId === undefined) {
       toast.show({ message: '请先在「账户」里添加一个账户' })
+      setStep('mapping')
       return
     }
     setBusy(true)
     try {
-      const refs = parsed.rows.flatMap((r) => (r.ref ? [r.ref] : []))
-      const existing = await loadDedupeCandidates(db, parsed.rows.map((r) => r.date), refs)
-      setItems(buildPreview(parsed.rows, { categories, merchantHistory, accounts, defaultAccountId, existing }))
+      const rows = parseRows(target.table, columns, amountSign).rows
+      const refs = rows.flatMap((r) => (r.ref ? [r.ref] : []))
+      const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
+      setItems(buildPreview(rows, { categories, merchantHistory, accounts, defaultAccountId, existing }))
       setStep('preview')
     } finally {
       setBusy(false)
@@ -135,7 +150,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
   async function commit() {
     setBusy(true)
     try {
-      const id = await commitImport(db, { source, fileName, rowCount: items.length + parsed.errors.length, items })
+      const id = await commitImport(db, { source: sniff?.template?.source ?? source, fileName, rowCount: items.length + parsed.errors.length, items })
       setBatch((await db.importBatches.get(id)) ?? null)
       setStep('done')
     } catch (e) {
@@ -188,7 +203,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
       {step === 'preview' && (
         <PreviewStep
           fileName={fileName}
-          sourceName={def.name}
+          sourceName={sniff?.template ? `识别为「${sniff.template.name}」模板` : def.name}
           items={items}
           errors={parsed.errors}
           categories={categories}
