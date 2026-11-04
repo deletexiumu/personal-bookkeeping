@@ -36,9 +36,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: '个人记账',
-        short_name: '记账',
-        description: '简单、私密的个人记账应用',
+        name: '金匮簿',
+        short_name: '金匮簿',
+        description: '金匮簿：简单、私密的个人记账软件',
         lang: 'zh-CN',
         start_url: base,
         scope: base,

@@ -1,4 +1,4 @@
-# 把 Web/PWA 版本发布到 GitHub Pages：https://deletexiumu.github.io/personal-bookkeeping/
+# 把金匮簿的 Web/PWA 版本发布到 GitHub Pages：https://deletexiumu.github.io/personal-bookkeeping/
 # 首次使用前需在仓库 Settings → Pages 把 Source 设为 “GitHub Actions”。
 name: 部署 Web（GitHub Pages）
 
