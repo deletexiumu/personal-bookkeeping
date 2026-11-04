@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   Banknote,
   Bus,
   Clapperboard,
@@ -47,8 +48,17 @@ function categoryVisual(category: Pick<Category, 'name' | 'type'> | undefined): 
   return VISUALS[category.name] ?? FALLBACK[category.type]
 }
 
-export function CategoryIcon({ category, size = 40 }: { category: Category | undefined; size?: number }) {
-  const { icon: Icon, tone } = categoryVisual(category)
+const TRANSFER: Visual = { icon: ArrowLeftRight, tone: 'gray' }
+
+interface Props {
+  category: Category | undefined
+  /** 转账没有分类，显示转账图标 */
+  transfer?: boolean
+  size?: number
+}
+
+export function CategoryIcon({ category, transfer = false, size = 40 }: Props) {
+  const { icon: Icon, tone } = transfer ? TRANSFER : categoryVisual(category)
   return (
     <span className={`cat-icon tone-${tone}`} style={{ width: size, height: size }} aria-hidden="true">
       <Icon size={Math.round(size * 0.5)} strokeWidth={2} />

@@ -6,6 +6,7 @@ import { db } from './db'
 
 beforeEach(async () => {
   window.location.hash = ''
+  localStorage.clear()
   await db.open()
 })
 
@@ -46,7 +47,7 @@ describe('App', () => {
     await user.click(within(dialog).getByRole('button', { name: '完成' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(await screen.findByText('午饭')).toBeInTheDocument()
+    expect(await screen.findByText(/^午饭 · \d{2}:\d{2}$/)).toBeInTheDocument()
     expect(screen.getAllByText('-¥32.00').length).toBeGreaterThan(0)
   })
 
@@ -60,5 +61,70 @@ describe('App', () => {
     expect(within(dialog).getByRole('alert')).toHaveTextContent('请输入大于 0 的金额')
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('金额键盘四则运算，再记后可撤销', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await act(async () => {
+      await db.categories.count()
+    })
+    await user.keyboard('n')
+    const dialog = await screen.findByRole('dialog', { name: '记一笔' })
+    const keypad = within(dialog).getByRole('group', { name: '金额键盘' })
+    for (const name of ['1', '2', '加', '8', '小数点', '5']) {
+      await user.click(within(keypad).getByRole('button', { name }))
+    }
+    expect(within(dialog).getByLabelText('金额（元）')).toHaveValue('12+8.5')
+    expect(within(dialog).getByText('= ¥20.50')).toBeInTheDocument()
+
+    await user.click(within(keypad).getByRole('button', { name: '再记' }))
+    // 弹窗保持打开，金额清空
+    await waitFor(() => expect(within(dialog).getByLabelText('金额（元）')).toHaveValue(''))
+    expect(await screen.findByText('已记支出 ¥20.50')).toBeInTheDocument()
+    expect(await db.transactions.count()).toBe(1)
+
+    await user.click(screen.getByRole('button', { name: '撤销' }))
+    await waitFor(async () => expect(await db.transactions.count()).toBe(0))
+  })
+
+  it('转账模式选择转出和转入账户', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await act(async () => {
+      await db.accounts.count()
+    })
+    await user.keyboard('n')
+    const dialog = await screen.findByRole('dialog', { name: '记一笔' })
+    await user.click(within(dialog).getByRole('radio', { name: '转账' }))
+    await user.type(within(dialog).getByLabelText('金额（元）'), '500')
+    await user.selectOptions(within(dialog).getByLabelText('转出账户'), '微信')
+    await user.selectOptions(within(dialog).getByLabelText('转入账户'), '银行卡')
+    await user.click(within(dialog).getByRole('button', { name: '完成' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await screen.findByText('微信 → 银行卡', { exact: false })).toBeInTheDocument()
+    const [row] = await db.transactions.toArray()
+    expect(row).toMatchObject({ type: 'transfer', amount: 50000 })
+  })
+
+  it('沿用上次的分类和账户', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await act(async () => {
+      await db.categories.count()
+    })
+    await user.keyboard('n')
+    let dialog = await screen.findByRole('dialog', { name: '记一笔' })
+    await user.type(within(dialog).getByLabelText('金额（元）'), '6')
+    await user.click(within(dialog).getByRole('button', { name: '交通' }))
+    await user.selectOptions(within(dialog).getByLabelText('账户'), '支付宝')
+    await user.click(within(dialog).getByRole('button', { name: '完成' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.keyboard('n')
+    dialog = await screen.findByRole('dialog', { name: '记一笔' })
+    expect(within(dialog).getByRole('button', { name: '交通' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(dialog).getByLabelText('账户')).toHaveDisplayValue('支付宝')
   })
 })

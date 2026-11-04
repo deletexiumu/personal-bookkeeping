@@ -409,8 +409,152 @@
   color: var(--semantic-expense);
 }
 
-.form-actions {
+.form-warning {
+  color: var(--semantic-warning);
+}
+
+/* ---------- 记一笔 ---------- */
+.amount-block {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  gap: var(--space-1);
+}
+
+.amount-hint {
+  min-height: 16px;
+  text-align: right;
+}
+
+.field-bar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: var(--space-3);
+}
+
+.transfer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.transfer-arrow {
+  margin-bottom: 11px;
+}
+
+.transfer-fee {
+  grid-column: 1 / -1;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.keypad-key {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.keypad-key:active:not(:disabled) {
+  background: var(--border-default);
+}
+
+.keypad-again,
+.keypad-done {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.keypad-again {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+}
+
+.keypad-done {
+  background: var(--brand-primary);
+  color: var(--text-on-brand);
+}
+
+.keypad-done:active:not(:disabled) {
+  background: var(--brand-primary-hover);
+}
+
+.keypad-key:disabled {
+  opacity: 0.5;
+}
+
+@media (max-width: 767px) {
+  .quick-add {
+    gap: var(--space-3);
+  }
+
+  .keypad-key {
+    min-height: 52px;
+  }
+}
+
+/* ---------- Toast ---------- */
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-height) + var(--space-4) + env(safe-area-inset-bottom));
+  z-index: 200;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+body[data-dialog-open] .toast-region {
+  top: calc(var(--space-4) + env(safe-area-inset-top));
+  bottom: auto;
+}
+
+@media (min-width: 768px) {
+  .toast-region,
+  body[data-dialog-open] .toast-region {
+    top: auto;
+    bottom: var(--space-6);
+  }
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--text-primary);
+  color: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  pointer-events: auto;
+  animation: pop-in 0.18s ease-out;
+}
+
+.toast:not(:has(.toast-action)) {
+  padding-right: var(--space-4);
+}
+
+.toast-action {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--brand-soft);
+  font-weight: 600;
+}
+
+.toast-action:hover {
+  background: rgb(255 255 255 / 12%);
 }

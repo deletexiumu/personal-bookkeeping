@@ -29,8 +29,10 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
     first?.focus()
     const { overflow } = document.body.style
     document.body.style.overflow = 'hidden'
+    document.body.dataset.dialogOpen = ''
     return () => {
       document.body.style.overflow = overflow
+      delete document.body.dataset.dialogOpen
       previous?.focus?.()
     }
   }, [open])
