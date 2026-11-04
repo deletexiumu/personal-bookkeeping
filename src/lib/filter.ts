@@ -49,3 +49,21 @@ export const SOURCE_LABEL: Record<TransactionSource, string> = {
   api: '接口',
   rule: '规则',
 }
+
+/** 从明细页链接中读出月份和筛选条件，例如 #/transactions?month=2026-11&type=expense&category=1&q=星巴克 */
+export function parseTransactionsHash(hash: string): { month?: string; filter: TransactionFilter } {
+  const query = hash.split('?')[1]
+  const filter: TransactionFilter = {}
+  if (!query) return { filter }
+  const params = new URLSearchParams(query)
+  const month = params.get('month') ?? undefined
+  const type = params.get('type')
+  if (type === 'expense' || type === 'income' || type === 'transfer') filter.type = type
+  const category = Number(params.get('category'))
+  if (Number.isInteger(category) && category > 0) filter.categoryId = category
+  const account = Number(params.get('account'))
+  if (Number.isInteger(account) && account > 0) filter.accountId = account
+  const q = params.get('q')?.trim()
+  if (q) filter.query = q
+  return { month: month && /^\d{4}-\d{2}$/.test(month) ? month : undefined, filter }
+}

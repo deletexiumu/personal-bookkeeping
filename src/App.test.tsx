@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { db } from './db'
 import { addTransaction } from './db/transactions'
-import { today } from './lib/date'
+import { shiftMonth, today } from './lib/date'
 import { makeXlsx } from './lib/import/testZip'
 
 beforeEach(async () => {
@@ -27,7 +27,10 @@ describe('App', () => {
 
     await user.click(within(sidebar).getByRole('link', { name: '分析' }))
     expect(await screen.findByRole('heading', { level: 1, name: '分析' })).toBeInTheDocument()
-    expect(screen.getByText('W5')).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: '区间粒度' })).toBeInTheDocument()
+
+    await user.click(within(sidebar).getByRole('link', { name: '开放接口' }))
+    expect(await screen.findByText('即将推出')).toBeInTheDocument()
   })
 
   it('按 N 打开记一笔，保存后出现在明细中', async () => {
@@ -279,6 +282,61 @@ describe('App', () => {
       const summary = await screen.findByRole('region', { name: '本月汇总' })
       expect(await within(summary).findByRole('progressbar', { name: '本月预算' })).toHaveAttribute('aria-valuenow', '90')
       expect(within(summary).getByText('月预算 ¥1,000.00')).toBeInTheDocument()
+    })
+  })
+
+  describe('分析', () => {
+    it('KPI 与上月对比，点击分类和柱子下钻，跳到带筛选的明细', async () => {
+      await db.open()
+      const month = today().slice(0, 7)
+      const lastMonth = shiftMonth(month, -1)
+      await addTransaction(db, { type: 'expense', amount: 3000, categoryId: 1, accountId: 1, date: `${month}-02`, merchant: '星巴克' })
+      await addTransaction(db, { type: 'expense', amount: 2000, categoryId: 1, accountId: 1, date: `${month}-01`, merchant: '星巴克' })
+      await addTransaction(db, { type: 'expense', amount: 8000, categoryId: 2, accountId: 1, date: `${month}-01`, note: '打车' })
+      await addTransaction(db, { type: 'income', amount: 100000, categoryId: 8, accountId: 4, date: `${month}-01` })
+      await addTransaction(db, { type: 'expense', amount: 10000, categoryId: 1, accountId: 1, date: `${lastMonth}-15` })
+      window.location.hash = '#/analysis'
+      const user = userEvent.setup()
+      render(<App />)
+
+      const kpis = await screen.findByRole('region', { name: '区间概况' })
+      expect(await within(kpis).findByText('¥130.00')).toBeInTheDocument()
+      expect(within(kpis).getByText(/较上月 \+30%/)).toBeInTheDocument()
+      expect(within(kpis).getByText('储蓄率 87%')).toBeInTheDocument()
+
+      // 构成：交通 80 > 餐饮 50
+      const shares = screen.getByRole('region', { name: '支出构成' })
+      const rows = within(shares).getAllByRole('button')
+      expect(rows[0]).toHaveAccessibleName(/^交通，¥80.00，占 61.5%，1 笔/)
+      await user.click(within(shares).getByRole('button', { name: /^餐饮/ }))
+      const dialog = await screen.findByRole('dialog', { name: /餐饮$/ })
+      expect(within(dialog).getByText('共 2 笔 · 支出 ¥50.00')).toBeInTheDocument()
+
+      // 跳到明细页，带上月份和分类筛选
+      await user.click(within(dialog).getByRole('link', { name: '在明细页中筛选' }))
+      const summary = await screen.findByRole('region', { name: '筛选汇总' })
+      expect(await within(summary).findByText('¥50.00')).toBeInTheDocument()
+      expect(screen.getByLabelText('分类')).toHaveValue('1')
+
+      // 按天的柱子：切到表格视图，点日期下钻
+      window.location.hash = '#/analysis'
+      await user.click(await screen.findByRole('button', { name: '表格' }))
+      const table = screen.getByRole('table')
+      expect(within(table).getByText('合计').closest('tr')).toHaveTextContent('¥130.00')
+      await user.click(within(table).getAllByRole('button')[0])
+      expect(await screen.findByRole('dialog', { name: /1日 周.支出$/ })).toHaveTextContent('共 2 笔 · 支出 ¥100.00')
+    })
+
+    it('切到年，柱子按月并排显示收入和支出', async () => {
+      window.location.hash = '#/analysis'
+      await addTransaction(db, { type: 'expense', amount: 3000, categoryId: 1, accountId: 1, date: today() })
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('radio', { name: '年' }))
+      const chart = await screen.findByRole('region', { name: '收支趋势' })
+      expect(within(chart).getAllByRole('button', { name: /查看明细$/ })).toHaveLength(12)
+      expect(within(chart).getByRole('list', { name: '图例' })).toHaveTextContent('支出收入')
+      expect(screen.getByText('月均支出')).toBeInTheDocument()
     })
   })
 

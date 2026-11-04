@@ -99,6 +99,12 @@ export async function listByMonth(db: BookkeepingDB, month: string): Promise<Tra
   return rows.sort(compareTransactions)
 }
 
+/** 查询日期区间（含首尾，YYYY-MM-DD）内的记录 */
+export async function listByRange(db: BookkeepingDB, start: string, end: string): Promise<Transaction[]> {
+  const rows = await db.transactions.where('date').between(start, end, true, true).toArray()
+  return rows.sort(compareTransactions)
+}
+
 /** 各分类被使用的次数，用于记一笔时按使用频次排序分类 */
 export async function categoryUsage(db: BookkeepingDB): Promise<Map<number, number>> {
   const usage = new Map<number, number>()

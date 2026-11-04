@@ -18,7 +18,7 @@ import { listBudgets } from '../db/budgets'
 import { deleteTransaction, listByMonth, restoreTransactions, summarize } from '../db/transactions'
 import { daysLeftInMonth, monthBudgets } from '../lib/budget'
 import { monthOf, today } from '../lib/date'
-import { filterTransactions, isFilterEmpty, type TransactionFilter } from '../lib/filter'
+import { filterTransactions, isFilterEmpty, parseTransactionsHash, type TransactionFilter } from '../lib/filter'
 import type { Account, Category, Transaction } from '../types'
 
 interface Props {
@@ -34,8 +34,10 @@ interface Props {
 export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   const toast = useToast()
   const wide = useMediaQuery(WIDE_QUERY)
-  const [month, setMonth] = useState(() => monthOf(today()))
-  const [filter, setFilter] = useState<TransactionFilter>({})
+  // 从分析页下钻过来时，链接里带着月份和筛选条件
+  const [initial] = useState(() => parseTransactionsHash(window.location.hash))
+  const [month, setMonth] = useState(() => initial.month ?? monthOf(today()))
+  const [filter, setFilter] = useState<TransactionFilter>(initial.filter)
   const [selectedId, setSelectedId] = useState<number>()
   const transactions = useLiveQuery(() => listByMonth(db, month), [month], [])
   const budgets = useLiveQuery(() => listBudgets(db), [], [])

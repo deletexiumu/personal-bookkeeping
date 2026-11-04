@@ -39,6 +39,10 @@
   --chart-4: #ef4444;
   --chart-5: #8b5cf6;
   --chart-6: #06b6d4;
+  /* 收支两个系列：已用 dataviz 校验脚本验证浅色 / 深色下的色盲区分度 */
+  --chart-expense: #2f6bff;
+  --chart-income: #16a34a;
+  --chart-grid: #eef1f6;
 
   /* 间距：4 的倍数 */
   --space-1: 4px;
@@ -101,6 +105,9 @@
     --chart-4: #f87171;
     --chart-5: #a78bfa;
     --chart-6: #22d3ee;
+    --chart-expense: #5b8cff;
+    --chart-income: #16a34a;
+    --chart-grid: #222a35;
     --shadow-card: none;
     --shadow-overlay: 0 12px 40px rgb(0 0 0 / 50%);
     --overlay-scrim: rgb(0 0 0 / 55%);
@@ -132,6 +139,9 @@
   --chart-4: #f87171;
   --chart-5: #a78bfa;
   --chart-6: #22d3ee;
+  --chart-expense: #5b8cff;
+  --chart-income: #16a34a;
+  --chart-grid: #222a35;
   --shadow-card: none;
   --shadow-overlay: 0 12px 40px rgb(0 0 0 / 50%);
   --overlay-scrim: rgb(0 0 0 / 55%);
