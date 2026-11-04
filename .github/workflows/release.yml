@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-            --title "金匮簿 $GITHUB_REF_NAME" \
+            --title "个人记账 $GITHUB_REF_NAME" \
             --notes "下载对应平台的安装包：macOS 选 .dmg（Apple Silicon 选 aarch64，Intel 选 x64），Windows 选 .exe 或 .msi。未签名版本在 macOS 首次打开需在“访达”中右键选择“打开”。"
           id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n1)"
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
@@ -116,8 +116,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: cd dist && zip -qr "../jinkuibu-web-${GITHUB_REF_NAME}.zip" .
+      - run: cd dist && zip -qr "../taozhubu-web-${GITHUB_REF_NAME}.zip" .
       - name: 附加到草稿 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" jinkuibu-web-*.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" taozhubu-web-*.zip --clobber
