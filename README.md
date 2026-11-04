@@ -56,12 +56,26 @@ pnpm test       # 运行测试
 pnpm lint       # 代码检查
 pnpm build      # 类型检查并构建到 dist/
 pnpm preview    # 本地预览构建结果（可测试 PWA 安装与离线）
+
+# 桌面端（macOS / Windows，需要 Rust 工具链）
+pnpm desktop:dev    # 桌面端开发模式
+pnpm desktop:build  # 打本机平台的安装包
 ```
+
+## 部署与发布
+
+- **Web / PWA**：合并到 `main` 后自动部署到 GitHub Pages
+- **自托管**：Docker 镜像 `ghcr.io/deletexiumu/personal-bookkeeping`，`docker compose up -d` 即可运行
+- **macOS / Windows**：基于 Tauri 2，打 `v*` 标签后自动构建安装包到 GitHub Releases
+
+详细说明、发版流程和需要配置的 GitHub 设置见 [docs/deployment.md](./docs/deployment.md)。
 
 ## 目录约定
 
 ```
 .
+├── .github/workflows/ # CI、Web 部署、Docker 镜像、桌面端发布
+├── deploy/docker/     # 自托管 nginx 配置
 ├── docs/              # 设计与需求文档
 ├── public/            # 图标等静态资源
 ├── src/
@@ -69,6 +83,8 @@ pnpm preview    # 本地预览构建结果（可测试 PWA 安装与离线）
 │   ├── db/            # 本地数据库（Dexie）与数据操作
 │   ├── lib/           # 金额、日期等工具函数
 │   └── types.ts       # 数据类型定义
+├── src-tauri/         # 桌面端（Tauri 2）外壳
+├── Dockerfile         # 自托管镜像
 └── vite.config.ts     # Vite、PWA 与 Vitest 配置
 ```
 

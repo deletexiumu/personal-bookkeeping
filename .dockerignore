@@ -1,0 +1,11 @@
+node_modules
+dist
+dev-dist
+coverage
+src-tauri/target
+src-tauri/gen
+.git
+.github
+*.log
+.env
+.env.*
