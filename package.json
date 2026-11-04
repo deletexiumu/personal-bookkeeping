@@ -2,7 +2,8 @@
   "name": "personal-bookkeeping",
   "private": true,
   "version": "0.1.0",
-  "description": "个人记账 PWA：数据存储在本地浏览器，可离线使用",
+  "description": "个人记账软件：多端（Web、微信小程序、macOS、Windows）、多种导入方式、统计分析与开放 API。个人免费，商用需授权。",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
