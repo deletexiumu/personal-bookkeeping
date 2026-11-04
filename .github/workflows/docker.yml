@@ -1,5 +1,6 @@
 # 构建自托管用的 Docker 镜像并推送到 GitHub Container Registry（ghcr.io）。
-# main 分支推送得到 :edge，打 v* 标签得到 :x.y.z / :x.y / :latest。只用内置 GITHUB_TOKEN，无需额外密钥。
+# main 分支推送得到 :edge 和 :sha-xxxxxxx，打 v* 标签得到 :x.y.z / :x.y / :latest。推镜像只用内置 GITHUB_TOKEN。
+# main 的镜像推送完成后，deploy 任务经 SSH 部署到 hkserver，需要 DEPLOY_* 系列 Secret，没配时跳过。
 name: Docker 镜像
 
 on:
@@ -12,13 +13,13 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: docker-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   image:
     runs-on: ubuntu-latest
+    # 只取消过时的镜像构建；concurrency 放在任务级，避免新推送把正在跑的 deploy 中途取消
+    concurrency:
+      group: docker-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
@@ -46,3 +47,48 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # main 的镜像推送完成后，经 SSH 部署到 hkserver（见 docs/deployment.md 的 1.2.1 节）。
+  # 服务器上的 authorized_keys 用强制命令把这把密钥限定为只能执行 /opt/taozhubu/deploy.sh，
+  # 这里传过去的只是镜像标签。没配 DEPLOY_SSH_KEY 时跳过，不让工作流失败。
+  deploy:
+    name: 部署到 hkserver
+    needs: image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-hkserver
+      cancel-in-progress: false
+    steps:
+      - name: 检查部署配置
+        id: check
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "::notice::未配置 DEPLOY_SSH_KEY，跳过部署"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: SSH 部署
+        if: steps.check.outputs.skip != 'true'
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          tag="sha-${GITHUB_SHA::7}"
+          echo "部署镜像标签 $tag"
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            "${SSH_USER:-root}@$SSH_HOST" "$tag"
+      - name: 线上健康检查
+        if: steps.check.outputs.skip != 'true' && vars.DEPLOY_URL != ''
+        env:
+          URL: ${{ vars.DEPLOY_URL }}
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${URL%/}/healthz"

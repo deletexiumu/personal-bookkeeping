@@ -38,6 +38,43 @@ docker run -d -p 8080:8080 taozhubu
 
 镜像同时提供 `linux/amd64` 和 `linux/arm64`，可以跑在云服务器、NAS 或树莓派上。注意 PWA 的 Service Worker 要求 HTTPS（`localhost` 除外），对外提供服务时请在前面加一层带证书的反向代理（Caddy、nginx、Traefik 等）。
 
+#### 1.2.1 hkserver 上的部署
+
+线上地址是 <https://taozhubu.deepai.wiki/>。服务器配置文件放在仓库的 `deploy/server/`：
+
+| 仓库文件 | 服务器位置 | 作用 |
+| --- | --- | --- |
+| `deploy/server/docker-compose.yml` | `/opt/taozhubu/docker-compose.yml` | 容器 `taozhubu-web`，不占宿主端口，只挂 `pigsty_pigsty` 网络 |
+| `deploy/server/deploy.sh` | `/opt/taozhubu/deploy.sh` | 拉镜像、重建容器、等健康检查，不通过就回滚到上一个标签 |
+| `deploy/server/taozhubu.conf` | `/opt/pigsty/nginx/conf.d/taozhubu.conf` | pigsty-nginx 的站点配置，按容器名反代 |
+
+请求链路：宿主 nginx 在 443 端口按 SNI 分流，转给 pigsty-nginx（`127.0.0.1:4433`），再按容器名转给 `taozhubu-web:8080`。证书由 certbot 的 dns-cloudflare 插件签发，和服务器上其他站点一样自动续期。
+
+**自动部署**：合并到 `main` 后，`docker.yml` 推完镜像，`deploy` 任务用 SSH 登录服务器，传入本次提交的镜像标签 `sha-xxxxxxx`。服务器的 `/root/.ssh/authorized_keys` 用强制命令限定这把密钥，登录后只能执行 `deploy.sh`，传入的内容只当作镜像标签，标签格式不对会被拒绝。
+
+在仓库 Settings → Secrets and variables → Actions 中配置：
+
+| 名称 | 类型 | 值 |
+| --- | --- | --- |
+| `DEPLOY_SSH_KEY` | Secret | 部署专用私钥（ed25519）的全文 |
+| `DEPLOY_KNOWN_HOSTS` | Secret | 服务器的 known_hosts 行，用于校验服务器指纹。在服务器上生成，不要用 `ssh-keyscan` 从网络获取 |
+| `DEPLOY_HOST` | Secret | 服务器公网 IP |
+| `DEPLOY_PORT` | Secret | SSH 端口 |
+| `DEPLOY_USER` | Secret | 登录用户，不填时为 `root` |
+| `DEPLOY_URL` | Variable | `https://taozhubu.deepai.wiki`，部署后检查 `/healthz` |
+
+没配 `DEPLOY_SSH_KEY` 时 `deploy` 任务直接跳过，不影响镜像发布。
+
+服务器上对应的一行 `authorized_keys`：
+
+```text
+restrict,command="/opt/taozhubu/deploy.sh" ssh-ed25519 AAAA... taozhubu-deploy@github-actions
+```
+
+**手动部署或回滚**：在服务器上运行 `bash /opt/taozhubu/deploy.sh`，不带参数部署 `edge`，也可以指定标签，例如 `bash /opt/taozhubu/deploy.sh sha-1a2b3c4` 或 `0.2.0`。当前标签记在 `/opt/taozhubu/.env`。
+
+**改了 `deploy/server/` 下的文件**：自动部署只更新镜像，不同步这些配置文件，需要手动复制到服务器。改了 nginx 配置后，先运行 `docker exec pigsty-nginx nginx -t`，通过后再运行 `docker exec pigsty-nginx nginx -s reload`。
+
 ### 1.3 macOS / Windows：Tauri 2
 
 桌面端选 Tauri 而不是 Electron，理由如下：
@@ -98,7 +135,7 @@ CI 在切换 monorepo 时只需把 `pnpm build` 换成 `pnpm -r build`（或 `pn
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | PR、推送 `main`、手动 | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
 | `.github/workflows/deploy-web.yml` | 推送 `main`、手动 | 构建并部署到 GitHub Pages |
-| `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io |
+| `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io；`main` 的镜像推送完成后经 SSH 部署到 hkserver（见 1.2.1） |
 | `.github/workflows/release.yml` | `v*` 标签、手动 | 创建草稿 Release，构建 macOS（arm64 / x64）、Windows 安装包和 Web 静态包并上传；手动触发时只构建，产物在 Actions 页面下载 |
 | `.github/workflows/auto-merge.yml` | CI 完成后 | 仓库所有者发起的 PR 在 CI 通过后自动合并，并派发 main 上的 CI、Web 部署和 Docker 构建；其他人的 PR 需手动合并（见 3.1） |
 | `.github/dependabot.yml` | 定时 | 自动提 PR 升级 Actions、npm、Cargo 依赖 |

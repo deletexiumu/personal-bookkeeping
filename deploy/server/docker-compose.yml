@@ -1,0 +1,25 @@
+# 陶朱簿 Web 在 hkserver 上的部署（放在服务器的 /opt/taozhubu/）。
+# 对外地址：https://taozhubu.deepai.wiki/
+# 链路：宿主 nginx stream（:443 按 SNI 分流）→ pigsty-nginx（:4433）→ taozhubu-web:8080
+# 不占宿主端口，只挂 pigsty_pigsty 网络，由 pigsty-nginx 按容器名反代。
+# 镜像标签由 deploy.sh 写进同目录 .env 的 TAOZHUBU_TAG，默认 edge（main 最新）。
+services:
+  web:
+    image: ghcr.io/deletexiumu/personal-bookkeeping:${TAOZHUBU_TAG:-edge}
+    container_name: taozhubu-web
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - pigsty
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  pigsty:
+    external: true
+    name: pigsty_pigsty
