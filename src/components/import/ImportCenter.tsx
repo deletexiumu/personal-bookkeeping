@@ -1,9 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronRight, CircleHelp, Link2 } from 'lucide-react'
+import { ChevronRight, CircleHelp, Link2, Sheet, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { hrefOf } from '../../app/router'
 import { db } from '../../db'
 import { listImportBatches } from '../../db/imports'
+import { deleteImportTemplate, listImportTemplates } from '../../db/rules'
+import { FIELD_LABELS } from '../../lib/import/fields'
 import type { ImportBatch, ImportSource } from '../../types'
 import { TonePreview } from '../CategoryIcon'
 import { Badge } from '../ui/Badge'
@@ -21,6 +23,7 @@ function formatStamp(ms: number): string {
 /** 导入中心（M04）：来源卡片、自动记账入口、导入记录 */
 export function ImportCenter({ onStart }: { onStart: (source: ImportSource) => void }) {
   const batches = useLiveQuery(() => listImportBatches(db), [], [])
+  const templates = useLiveQuery(() => listImportTemplates(db), [], [])
   const [guide, setGuide] = useState<SourceDef | null>(null)
   const [reverting, setReverting] = useState<ImportBatch | null>(null)
 
@@ -110,6 +113,36 @@ export function ImportCenter({ onStart }: { onStart: (source: ImportSource) => v
           </ul>
         )}
       </section>
+
+      {templates.length > 0 && (
+        <section className="import-section" aria-labelledby="import-templates">
+          <h2 id="import-templates" className="t-title-s">
+            我的映射模板
+          </h2>
+          <ul className="card manage-list">
+            {templates.map((t) => (
+              <li key={t.id} className="manage-row batch-row">
+                <TonePreview visual={{ icon: Sheet, tone: 'orange' }} size={36} />
+                <div className="manage-main">
+                  <span className="t-body-m">{t.name}</span>
+                  <span className="t-caption text-tertiary">
+                    {t.headers.length} 列 · {t.columns.filter((c) => c !== 'ignore').map((c) => FIELD_LABELS[c].replace(/（.*）/, '')).join('、')}
+                  </span>
+                </div>
+                <IconButton
+                  label={`删除模板 ${t.name}`}
+                  onClick={() => {
+                    if (confirm(`确定删除模板「${t.name}」吗？`)) void deleteImportTemplate(db, t.id!)
+                  }}
+                >
+                  <Trash2 size={18} />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+          <p className="t-caption text-tertiary">表头与模板一致的文件会自动套用映射，跳过字段映射这一步。</p>
+        </section>
+      )}
 
       <Dialog open={guide !== null} title={`${guide?.name ?? ''} · 导出教程`} onClose={() => setGuide(null)}>
         <ol className="guide-list t-body-m">

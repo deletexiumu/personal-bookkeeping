@@ -381,5 +381,70 @@ describe('App', () => {
       expect(row).toMatchObject({ merchant: '美团外卖', accountId: 4, categoryId: 1, externalId: 'W1' })
       expect((await db.importBatches.toArray())[0]).toMatchObject({ source: 'wechat', rowCount: 2, importedCount: 1 })
     })
+
+    it('改分类时「记住」生成规则，保存的映射模板下次自动套用', async () => {
+      window.location.hash = '#/import'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: /^通用表格(?!导出)/ }))
+      await user.upload(screen.getByLabelText('选择账单文件'), new File([CSV], '信用卡账单-2026-10.csv', { type: 'text/csv' }))
+
+      await user.click(await screen.findByLabelText('保存为模板，下次自动识别'))
+      expect(screen.getByLabelText('模板名称')).toHaveValue('信用卡账单')
+      await user.click(screen.getByRole('button', { name: '下一步：预览 4 条' }))
+      expect(await screen.findByText('已保存模板「信用卡账单」，下次自动识别')).toBeInTheDocument()
+
+      await user.selectOptions(await screen.findByLabelText('「某某小店」的分类'), '购物')
+      await user.click(screen.getByLabelText('记住'))
+      expect(screen.getByText('入账后记住 1 条分类规则')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '确认导入' }))
+      expect(await screen.findByRole('heading', { name: /已入账/ })).toBeInTheDocument()
+      expect(await db.rules.toArray()).toMatchObject([{ field: 'note', match: 'contains', keyword: '某某小店', categoryId: 3 }])
+
+      // 第二次导入同样表头的文件：跳过字段映射，规则生效
+      await user.click(screen.getByRole('button', { name: '继续导入' }))
+      expect(await screen.findByText('我的映射模板')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /^通用表格(?!导出)/ }))
+      const next = ['说明', '交易日期,交易摘要,人民币金额,交易地点', '2026/11/02 10:00,某某小店,-12.00,上海'].join('\n')
+      await user.upload(screen.getByLabelText('选择账单文件'), new File([next], 'b.csv', { type: 'text/csv' }))
+      expect(await screen.findByText(/按模板「信用卡账单」识别 · 1 条/)).toBeInTheDocument()
+      expect(screen.getByText('规则：某某小店→购物')).toBeInTheDocument()
+    })
+  })
+
+  describe('规则', () => {
+    it('新增、调整顺序和删除规则', async () => {
+      window.location.hash = '#/rules'
+      const user = userEvent.setup()
+      render(<App />)
+      expect(await screen.findByText(/还没有规则/)).toBeInTheDocument()
+
+      for (const [keyword, category] of [
+        ['星巴克', '餐饮'],
+        ['滴滴', '交通'],
+      ]) {
+        await user.click(screen.getByRole('button', { name: '新增规则' }))
+        const dialog = await screen.findByRole('dialog', { name: '新增规则' })
+        await user.type(within(dialog).getByLabelText('关键词'), keyword)
+        await user.selectOptions(within(dialog).getByLabelText('归到分类'), category)
+        await user.click(within(dialog).getByRole('button', { name: '保存' }))
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      }
+      const list = await screen.findByRole('list', { name: '分类规则' })
+      expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+        expect.stringContaining('商户或备注包含「星巴克」'),
+        expect.stringContaining('商户或备注包含「滴滴」'),
+      ])
+      await user.click(screen.getByRole('button', { name: '上移规则 商户或备注包含「滴滴」' }))
+      await waitFor(() =>
+        expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('商户或备注包含「滴滴」'),
+      )
+
+      await user.click(screen.getByRole('button', { name: '编辑规则 商户或备注包含「星巴克」' }))
+      const dialog = await screen.findByRole('dialog', { name: '编辑规则' })
+      await user.selectOptions(within(dialog).getByLabelText('匹配方式'), '等于')
+      await user.click(within(dialog).getByRole('button', { name: '保存' }))
+      expect(await screen.findByText('商户或备注等于「星巴克」')).toBeInTheDocument()
+    })
   })
 })

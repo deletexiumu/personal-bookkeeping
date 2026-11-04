@@ -1,6 +1,8 @@
 import { FileCheck2 } from 'lucide-react'
 import { useState } from 'react'
 import { statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
+import { ruleFromRow } from '../../lib/import/rules'
+import { normalizeText } from '../../lib/import/similarity'
 import type { RowError } from '../../lib/import/table'
 import { formatCents } from '../../lib/money'
 import type { Category } from '../../types'
@@ -10,6 +12,7 @@ import { Button } from '../ui/Button'
 type Filter = 'all' | 'pending' | 'duplicate' | 'income'
 
 const SOURCE_TEXT: Record<CategorySource, string> = {
+  rule: '规则',
   file: '文件分类',
   history: '同商户',
   keyword: '关键词',
@@ -61,9 +64,23 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
   }
 
   function setCategory(item: PreviewItem, value: string) {
-    if (value === '') patch(item.key, { categoryId: undefined, categorySource: undefined })
+    if (value === '') patch(item.key, { categoryId: undefined, categorySource: undefined, remember: false })
     else patch(item.key, { categoryId: Number(value), categorySource: 'manual' })
   }
+
+  /** 勾选「记住」：入账时生成规则，并把本批次同商户、未手动改过的行改成同一分类 */
+  function setRemember(item: PreviewItem, on: boolean) {
+    const key = normalizeText(item.row.merchant ?? item.row.note)
+    onChange(
+      items.map((i) => {
+        if (i.key === item.key) return { ...i, remember: on }
+        const same = key && i.row.type === item.row.type && normalizeText(i.row.merchant ?? i.row.note) === key
+        if (on && same && i.categorySource !== 'manual') return { ...i, categoryId: item.categoryId, categorySource: 'manual' }
+        return i
+      }),
+    )
+  }
+  const rememberCount = items.filter((i) => i.remember && i.selected).length
 
   const allVisibleSelected = visible.length > 0 && visible.every((i) => i.selected)
   function toggleVisible() {
@@ -155,7 +172,12 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {status === 'duplicate' && <Badge tone="warning">疑似重复</Badge>}
                   {status === 'uncategorized' && <Badge tone="expense">待分类</Badge>}
                   {status === 'ignored' && <Badge>{row.skipReason}</Badge>}
-                  {status === 'new' && item.categorySource && item.categorySource !== 'manual' && (
+                  {status === 'new' && item.categorySource === 'rule' && item.rule && (
+                    <Badge tone="brand">
+                      规则：{item.rule.keyword}→{category?.name}
+                    </Badge>
+                  )}
+                  {status === 'new' && item.categorySource && item.categorySource !== 'manual' && item.categorySource !== 'rule' && (
                     <Badge tone="brand">
                       {SOURCE_TEXT[item.categorySource]}：{category?.name}
                     </Badge>
@@ -169,8 +191,9 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
                 </span>
               </div>
+              <span className="preview-category">
               <select
-                className="input preview-category"
+                className="input"
                 aria-label={`「${title}」的分类`}
                 value={item.categoryId ?? ''}
                 onChange={(e) => setCategory(item, e.target.value)}
@@ -182,6 +205,13 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   </option>
                 ))}
               </select>
+              {item.categorySource === 'manual' && item.categoryId !== undefined && ruleFromRow(row, item.categoryId) && (
+                <label className="check-field preview-remember t-caption" title={`以后${row.merchant ? '商户' : '备注'}包含「${row.merchant ?? row.note}」时自动归为${category?.name}`}>
+                  <input type="checkbox" checked={!!item.remember} onChange={(e) => setRemember(item, e.target.checked)} />
+                  记住
+                </label>
+              )}
+              </span>
               <span className={`t-num-m preview-amount ${neutral ? 'text-secondary' : row.type === 'income' ? 'text-income' : ''}`}>
                 {neutral ? '' : row.type === 'income' ? '+' : '-'}
                 {formatCents(row.amount)}
@@ -198,6 +228,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
           {summary.selectedUncategorized > 0 && (
             <p className="t-caption text-tertiary">{summary.selectedUncategorized} 条将以「未分类」入账</p>
           )}
+          {rememberCount > 0 && <p className="t-caption text-tertiary">入账后记住 {rememberCount} 条分类规则</p>}
         </div>
         <div className="import-actions">
           <Button onClick={onBack}>上一步</Button>

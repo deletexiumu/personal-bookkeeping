@@ -1,3 +1,6 @@
+import type { FieldKey } from './lib/import/fields'
+import type { AmountSign } from './lib/import/table'
+
 /** 收支类型。转账在账户间移动资金，不计入收入和支出。 */
 export type TransactionType = 'expense' | 'income' | 'transfer'
 
@@ -92,4 +95,38 @@ export interface ImportBatch {
   createdAt: number
   status: 'done' | 'reverted'
   revertedAt?: number
+}
+
+/** 规则匹配的字段：商户、备注，或两者任一 */
+export type RuleField = 'merchant' | 'note' | 'any'
+
+/** 匹配方式：包含关键词，或完全等于 */
+export type RuleMatch = 'contains' | 'equals'
+
+/**
+ * 自动分类规则：导入时命中的流水归到 categoryId（分类的收支类型决定规则适用的方向）。
+ * order 越小优先级越高，用户规则优先于历史同商户和内置关键词。
+ */
+export interface CategoryRule {
+  id?: number
+  field: RuleField
+  match: RuleMatch
+  keyword: string
+  categoryId: number
+  order?: number
+  createdAt?: number
+}
+
+/** 用户保存的字段映射模板：表头一致时下次自动套用，跳过字段映射 */
+export interface ImportTemplate {
+  id?: number
+  name: string
+  /** 表头（去掉空白），用于识别 */
+  headers: string[]
+  /** 与 headers 一一对应的目标字段 */
+  columns: FieldKey[]
+  amountSign: AmountSign
+  /** 默认入账账户 */
+  accountId?: number
+  createdAt: number
 }

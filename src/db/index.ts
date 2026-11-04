@@ -1,5 +1,5 @@
 import { Dexie, type EntityTable } from 'dexie'
-import type { Account, Budget, Category, ImportBatch, Transaction } from '../types'
+import type { Account, Budget, Category, CategoryRule, ImportBatch, ImportTemplate, Transaction } from '../types'
 import { DEFAULT_ACCOUNT_TYPES, DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES } from './defaults'
 
 export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES }
@@ -11,6 +11,8 @@ export class BookkeepingDB extends Dexie {
   accounts!: EntityTable<Account, 'id'>
   budgets!: EntityTable<Budget, 'id'>
   importBatches!: EntityTable<ImportBatch, 'id'>
+  rules!: EntityTable<CategoryRule, 'id'>
+  importTemplates!: EntityTable<ImportTemplate, 'id'>
 
   constructor(name = 'personal-bookkeeping') {
     super(name)
@@ -66,6 +68,11 @@ export class BookkeepingDB extends Dexie {
     this.version(5).stores({
       transactions: '++id, date, type, categoryId, accountId, transferAccountId, source, importBatchId, *tags, externalId',
       importBatches: '++id, createdAt',
+    })
+    // v6：自动分类规则、字段映射模板
+    this.version(6).stores({
+      rules: '++id, order, categoryId',
+      importTemplates: '++id, name',
     })
     this.on('populate', (tx) => {
       tx.table('categories').bulkAdd(DEFAULT_CATEGORIES)

@@ -1,11 +1,12 @@
-import type { Account, Category, Transaction } from '../../types'
+import type { Account, Category, CategoryRule, Transaction } from '../../types'
 import { KEYWORD_DICTIONARY } from './keywords'
+import { findRule } from './rules'
 import { CATEGORY_ALIASES } from './templates'
 import { normalizeText, similarity } from './similarity'
 import type { ParsedRow } from './table'
 
-/** 分类来源：文件里的分类列、历史同商户、内置关键词 */
-export type CategorySource = 'file' | 'history' | 'keyword' | 'manual'
+/** 分类来源：用户规则、文件里的分类列、历史同商户、内置关键词、手动选择 */
+export type CategorySource = 'rule' | 'file' | 'history' | 'keyword' | 'manual'
 
 export interface PreviewItem {
   /** 在本批次中的序号 */
@@ -14,6 +15,10 @@ export interface PreviewItem {
   accountId: number
   categoryId?: number
   categorySource?: CategorySource
+  /** 命中的用户规则 */
+  rule?: CategoryRule
+  /** 手动改分类后勾选「记住」，入账时生成规则 */
+  remember?: boolean
   /** 疑似重复：与已有流水或本批次前面的行相同 */
   duplicateOf?: Transaction | 'batch'
   selected: boolean
@@ -62,6 +67,8 @@ function batchKey(row: ParsedRow): string | undefined {
 
 export interface ClassifyContext {
   categories: Category[]
+  /** 用户规则，已按优先级排序 */
+  rules?: CategoryRule[]
   /** 历史同商户：归一化商户名 → 分类 ID（以最近一笔为准） */
   merchantHistory: Map<string, number>
 }
@@ -77,8 +84,16 @@ export function buildMerchantHistory(transactions: Transaction[]): Map<string, n
   return map
 }
 
-/** 自动分类：文件分类列（按名称）> 历史同商户 > 内置关键词 > 未分类。用户规则在 W4-3 加入，优先级最高。 */
-export function classify(row: ParsedRow, ctx: ClassifyContext): { categoryId: number; source: CategorySource } | undefined {
+export interface ClassifyResult {
+  categoryId: number
+  source: CategorySource
+  rule?: CategoryRule
+}
+
+/** 自动分类：用户规则 > 文件分类列（按名称或别名）> 历史同商户 > 内置关键词 > 未分类 */
+export function classify(row: ParsedRow, ctx: ClassifyContext): ClassifyResult | undefined {
+  const rule = ctx.rules && findRule(row, ctx.rules, ctx.categories)
+  if (rule) return { categoryId: rule.categoryId, source: 'rule', rule }
   const usable = ctx.categories.filter((c) => c.type === row.type && !c.archived && c.id !== undefined)
   if (row.categoryName) {
     const alias = CATEGORY_ALIASES[row.categoryName]
@@ -145,6 +160,7 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     if (hit) {
       item.categoryId = hit.categoryId
       item.categorySource = hit.source
+      if (hit.rule) item.rule = hit.rule
     }
     const status = statusOf(item)
     item.selected = status === 'new' || status === 'uncategorized'

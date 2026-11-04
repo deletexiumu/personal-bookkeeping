@@ -13,6 +13,7 @@ import { BudgetPage } from './pages/BudgetPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { ImportPage } from './pages/ImportPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { RulesPage } from './pages/RulesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 
@@ -40,6 +41,8 @@ export default function App() {
     page = <CategoriesPage categories={categories} />
   } else if (route === 'import') {
     page = <ImportPage categories={activeCategories} accounts={activeAccounts} />
+  } else if (route === 'rules') {
+    page = <RulesPage categories={categories} />
   } else if (route === 'settings') {
     page = <SettingsPage />
   } else {
