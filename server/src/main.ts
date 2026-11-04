@@ -11,7 +11,8 @@ if (!config.databaseUrl && dataDirInUse(config.dataDir)) {
   process.exit(1)
 }
 const database = await openDatabase(config)
-const releaseLock = database.kind === 'pglite' ? holdDataDirLock(config.dataDir) : () => {}
+const releaseLock =
+  database.kind === 'pglite' && !config.dataDir.startsWith('memory://') ? holdDataDirLock(config.dataDir) : () => {}
 console.log(`数据库：${database.kind === 'postgres' ? 'PostgreSQL' : `PGlite（${config.dataDir}）`}，注册：${config.registration}`)
 
 const app = createApp({ db: database.db, config })

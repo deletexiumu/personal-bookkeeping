@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { authRoutes, type AuthDeps } from './auth/routes.ts'
 import { ApiError } from './http.ts'
@@ -11,7 +12,18 @@ import { ApiError } from './http.ts'
 export function createApp(deps: AuthDeps) {
   const app = new Hono().basePath('/api')
 
-  app.use(secureHeaders())
+  app.use(secureHeaders({ crossOriginResourcePolicy: false }))
+  // 桌面端等跨域客户端只用 Bearer 令牌，不允许带 Cookie
+  app.use(
+    cors({
+      origin: (origin) => (deps.config.corsOrigins.includes(origin) ? origin : null),
+      allowMethods: ['GET', 'POST', 'DELETE'],
+      allowHeaders: ['Authorization', 'Content-Type'],
+      exposeHeaders: ['Retry-After'],
+      credentials: false,
+      maxAge: 86400,
+    }),
+  )
   app.use(bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json(errorBody('payload_too_large', '请求内容太大'), 413) }))
   // 接口响应都不缓存，避免会话相关内容进入 Service Worker 或代理缓存
   app.use(async (c, next) => {

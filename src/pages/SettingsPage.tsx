@@ -4,8 +4,8 @@ import { navItemOf } from '../app/nav'
 import { usePreferences, type MoneyColors, type ThemePreference } from '../app/preferences'
 import { hrefOf, type RouteName } from '../app/router'
 import { PageHeader } from '../components/layout/AppShell'
+import { AccountSection } from '../components/settings/AccountSection'
 import { LicenseInfo } from '../components/settings/LicenseInfo'
-import { Badge } from '../components/ui/Badge'
 import { Dialog } from '../components/ui/Dialog'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
@@ -94,13 +94,7 @@ export function SettingsPage() {
   return (
     <div className="page">
       <PageHeader title="设置" />
-      <section className="card profile">
-        <div>
-          <h2 className="t-title-s">我的账本</h2>
-          <p className="t-caption text-tertiary">数据保存在本机浏览器（IndexedDB），不会上传</p>
-        </div>
-        <Badge tone="brand">个人版 · 免费</Badge>
-      </section>
+      <AccountSection />
       {GROUPS.map((group) => (
         <section key={group.title} className="settings-group">
           <h2 className="t-caption text-tertiary settings-group-title">{group.title}</h2>

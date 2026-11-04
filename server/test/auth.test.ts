@@ -199,3 +199,18 @@ describe('其他', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
   })
 })
+
+describe('跨域', () => {
+  it('只对白名单来源（桌面端）放行，且不允许带 Cookie', async () => {
+    const preflight = await s.request('/api/auth/login', {
+      method: 'OPTIONS',
+      headers: { origin: 'tauri://localhost', 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+    })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('tauri://localhost')
+    expect(preflight.headers.get('access-control-allow-credentials')).toBeNull()
+
+    const other = await s.request('/api/auth/config', { headers: { origin: 'https://evil.example' } })
+    expect(other.headers.get('access-control-allow-origin')).toBeNull()
+  })
+})

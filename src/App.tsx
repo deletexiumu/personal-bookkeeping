@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { refreshAccount } from './app/account'
 import { usePwaUpdatePrompt } from './app/pwa'
 import { useRoute } from './app/router'
 import { useHotkey } from './app/useHotkey'
@@ -14,6 +15,7 @@ import { AnalysisPage } from './pages/AnalysisPage'
 import { BudgetPage } from './pages/BudgetPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { ImportPage } from './pages/ImportPage'
+import { LoginPage } from './pages/LoginPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RulesPage } from './pages/RulesPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -31,6 +33,10 @@ export default function App() {
   const openQuickAdd = useCallback(() => setQuickAddOpen(true), [])
   const closeQuickAdd = useCallback(() => setQuickAddOpen(false), [])
   useHotkey('n', openQuickAdd, !quickAddOpen)
+  // 已登录时确认会话仍有效（在别处退出、改了密码或过期时变为未登录）
+  useEffect(() => {
+    void refreshAccount()
+  }, [])
 
   let page
   if (route === 'transactions') {
@@ -49,6 +55,8 @@ export default function App() {
     page = <RulesPage categories={categories} />
   } else if (route === 'settings') {
     page = <SettingsPage />
+  } else if (route === 'login') {
+    page = <LoginPage />
   } else {
     page = <PlaceholderPage route={route} />
   }

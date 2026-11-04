@@ -50,12 +50,12 @@ export function navItemOf(route: RouteName): NavItem {
   return [...SIDEBAR_ITEMS, ...EXTRA_ITEMS].find((item) => item.route === route)!
 }
 
-/** 侧边栏要高亮的入口：分类归在设置下 */
+/** 侧边栏要高亮的入口：分类、登录归在设置下 */
 export function sidebarRouteOf(route: RouteName): RouteName {
-  return route === 'categories' ? 'settings' : route
+  return route === 'categories' || route === 'login' ? 'settings' : route
 }
 
 /** 移动端 Tab 没有的页面，高亮「我的」 */
 export function tabRouteOf(route: RouteName): RouteName {
-  return ['budget', 'accounts', 'categories', 'rules', 'api'].includes(route) ? 'settings' : route
+  return ['budget', 'accounts', 'categories', 'rules', 'api', 'login'].includes(route) ? 'settings' : route
 }
