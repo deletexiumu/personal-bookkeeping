@@ -1,54 +1,14 @@
-import {
-  ArrowLeftRight,
-  Banknote,
-  Bus,
-  Clapperboard,
-  Coins,
-  Ellipsis,
-  Gift,
-  HeartPulse,
-  House,
-  ShoppingBag,
-  TrendingUp,
-  Utensils,
-  type LucideIcon,
-} from 'lucide-react'
-import type { Category } from '../types'
+import type { Account, Category } from '../types'
+import { ACCOUNT_TYPES, categoryVisual, TRANSFER_VISUAL, type Visual } from './icons'
 
-type Tone = 'orange' | 'blue' | 'red' | 'green' | 'purple' | 'cyan' | 'gray'
-
-interface Visual {
-  icon: LucideIcon
-  tone: Tone
+function ToneIcon({ visual, size }: { visual: Visual; size: number }) {
+  const { icon: Icon, tone } = visual
+  return (
+    <span className={`cat-icon tone-${tone}`} style={{ width: size, height: size }} aria-hidden="true">
+      <Icon size={Math.round(size * 0.5)} strokeWidth={2} />
+    </span>
+  )
 }
-
-/**
- * 默认分类的图标与配色（与 Figma 的 TransactionRow / CategoryChip 一致）。
- * W3 分类管理上线后改为读取分类上保存的图标和颜色，这里作为回退。
- */
-const VISUALS: Record<string, Visual> = {
-  餐饮: { icon: Utensils, tone: 'orange' },
-  交通: { icon: Bus, tone: 'blue' },
-  购物: { icon: ShoppingBag, tone: 'red' },
-  居住: { icon: House, tone: 'blue' },
-  娱乐: { icon: Clapperboard, tone: 'cyan' },
-  医疗: { icon: HeartPulse, tone: 'red' },
-  工资: { icon: Banknote, tone: 'green' },
-  奖金: { icon: Gift, tone: 'green' },
-  理财: { icon: TrendingUp, tone: 'green' },
-}
-
-const FALLBACK: Record<Category['type'], Visual> = {
-  expense: { icon: Ellipsis, tone: 'gray' },
-  income: { icon: Coins, tone: 'green' },
-}
-
-function categoryVisual(category: Pick<Category, 'name' | 'type'> | undefined): Visual {
-  if (!category) return FALLBACK.expense
-  return VISUALS[category.name] ?? FALLBACK[category.type]
-}
-
-const TRANSFER: Visual = { icon: ArrowLeftRight, tone: 'gray' }
 
 interface Props {
   category: Category | undefined
@@ -57,11 +17,19 @@ interface Props {
   size?: number
 }
 
+/** 分类图标（TransactionRow / CategoryChip） */
 export function CategoryIcon({ category, transfer = false, size = 40 }: Props) {
-  const { icon: Icon, tone } = transfer ? TRANSFER : categoryVisual(category)
-  return (
-    <span className={`cat-icon tone-${tone}`} style={{ width: size, height: size }} aria-hidden="true">
-      <Icon size={Math.round(size * 0.5)} strokeWidth={2} />
-    </span>
-  )
+  return <ToneIcon visual={transfer ? TRANSFER_VISUAL : categoryVisual(category)} size={size} />
 }
+
+/** 账户图标，按账户类型 */
+export function AccountIcon({ account, size = 40 }: { account: Account | undefined; size?: number }) {
+  const preset = ACCOUNT_TYPES[account?.type ?? 'other']
+  return <ToneIcon visual={{ icon: preset.icon, tone: preset.tone }} size={size} />
+}
+
+/** 任意图标 + 配色（图标选择器用） */
+export function TonePreview({ visual, size = 40 }: { visual: Visual; size?: number }) {
+  return <ToneIcon visual={visual} size={size} />
+}
+

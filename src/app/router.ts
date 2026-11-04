@@ -11,6 +11,7 @@ export const ROUTES = [
   'import',
   'budget',
   'accounts',
+  'categories',
   'rules',
   'api',
   'settings',

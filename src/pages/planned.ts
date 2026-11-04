@@ -8,7 +8,7 @@ export interface PlannedPage {
 }
 
 /** 未实现页面的计划说明，与 docs/web-roadmap.md 保持一致 */
-export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings'>, PlannedPage> = {
+export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories'>, PlannedPage> = {
   analysis: {
     title: '分析',
     milestone: 'W5',
@@ -36,12 +36,6 @@ export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings
     milestone: 'W3',
     summary: '按月设置总预算和分类预算，超支提前提醒。',
     features: ['总预算 + 分类预算', '明细汇总卡显示预算进度：超过 80% 变橙、超过 100% 变红', '超支分类在统计中置顶标红'],
-  },
-  accounts: {
-    title: '账户',
-    milestone: 'W3',
-    summary: '管理现金、银行卡、支付宝、微信等账户，查看余额。',
-    features: ['新增、编辑、归档账户', '初始余额与余额计算', '账户间转账（W2 记一笔支持转账模式）'],
   },
   rules: {
     title: '规则',

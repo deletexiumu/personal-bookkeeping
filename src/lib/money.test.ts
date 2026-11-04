@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCents, parseAmountToCents } from './money'
+import { formatCents, parseAmountToCents, parseBalanceToCents } from './money'
 
 describe('parseAmountToCents', () => {
   it('解析整数和小数金额', () => {
@@ -22,5 +22,19 @@ describe('formatCents', () => {
     expect(formatCents(5)).toBe('¥0.05')
     expect(formatCents(123456)).toBe('¥1,234.56')
     expect(formatCents(-1999)).toBe('-¥19.99')
+  })
+})
+
+describe('parseBalanceToCents', () => {
+  it('允许 0、负数和空值', () => {
+    expect(parseBalanceToCents('')).toBe(0)
+    expect(parseBalanceToCents('0')).toBe(0)
+    expect(parseBalanceToCents('-0')).toBe(0)
+    expect(parseBalanceToCents('-500.5')).toBe(-50050)
+    expect(parseBalanceToCents('1234.56')).toBe(123456)
+  })
+
+  it('拒绝非法输入', () => {
+    for (const bad of ['abc', '1.234', '--1', '1,000']) expect(parseBalanceToCents(bad)).toBeNull()
   })
 })

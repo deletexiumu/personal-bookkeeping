@@ -190,4 +190,63 @@ describe('App', () => {
       expect(screen.getByText('没有符合条件的记录')).toBeInTheDocument()
     })
   })
+
+  describe('账户与分类', () => {
+    it('新增账户，余额按初始余额和流水计算', async () => {
+      await db.open()
+      await addTransaction(db, { type: 'expense', amount: 3200, categoryId: 1, accountId: 4, date: today() })
+      window.location.hash = '#/accounts'
+      const user = userEvent.setup()
+      render(<App />)
+      expect(await screen.findByRole('heading', { level: 1, name: '账户' })).toBeInTheDocument()
+      const list = await screen.findByRole('list', { name: '账户列表' })
+      await waitFor(() => expect(within(list).getByText('-¥32.00')).toBeInTheDocument())
+
+      await user.click(screen.getByRole('button', { name: '新增账户' }))
+      const dialog = await screen.findByRole('dialog', { name: '新增账户' })
+      await user.type(within(dialog).getByLabelText('名称'), '招行信用卡')
+      await user.selectOptions(within(dialog).getByLabelText('类型'), '信用卡')
+      await user.type(within(dialog).getByLabelText('初始余额（元）'), '-500')
+      await user.click(within(dialog).getByRole('button', { name: '保存' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(await within(list).findByText('招行信用卡')).toBeInTheDocument()
+      expect(within(list).getByText('-¥500.00')).toBeInTheDocument()
+      // 负债 = 32 + 500
+      expect(within(screen.getByRole('region', { name: '净资产' })).getByText('¥532.00')).toBeInTheDocument()
+    })
+
+    it('归档的分类不再出现在记一笔中', async () => {
+      window.location.hash = '#/categories'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: '编辑分类 交通' }))
+      const dialog = await screen.findByRole('dialog', { name: '编辑分类' })
+      await user.click(within(dialog).getByLabelText(/归档/))
+      await user.click(within(dialog).getByRole('button', { name: '保存' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(await screen.findByRole('list', { name: '已归档分类' })).toBeInTheDocument()
+
+      await user.keyboard('n')
+      const add = await screen.findByRole('dialog', { name: '记一笔' })
+      expect(within(add).getByRole('button', { name: '餐饮' })).toBeInTheDocument()
+      expect(within(add).queryByRole('button', { name: '交通' })).not.toBeInTheDocument()
+    })
+
+    it('新增分类并选择图标和颜色', async () => {
+      window.location.hash = '#/categories'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: '新增分类' }))
+      const dialog = await screen.findByRole('dialog', { name: '新增分类' })
+      await user.type(within(dialog).getByLabelText('名称'), '宠物')
+      await user.click(within(dialog).getByRole('button', { name: '图标 paw-print' }))
+      await user.click(within(dialog).getByRole('button', { name: '紫色' }))
+      await user.click(within(dialog).getByRole('button', { name: '保存' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(await screen.findByRole('button', { name: '编辑分类 宠物' })).toBeInTheDocument()
+      const saved = await db.categories.where('name').equals('宠物').first()
+      expect(saved).toMatchObject({ type: 'expense', icon: 'paw-print', color: 'purple', order: 12 })
+    })
+  })
 })

@@ -11,6 +11,21 @@ export function parseAmountToCents(input: string): number | null {
   return cents
 }
 
+/**
+ * 解析账户余额（元）为分：可为 0 或负数（信用卡欠款），空字符串视为 0。
+ * 不合法时返回 null。
+ */
+export function parseBalanceToCents(input: string): number | null {
+  const text = input.trim().replace(/^[−—]/, '-')
+  if (text === '') return 0
+  if (!/^-?\d+(\.\d{1,2})?$/.test(text)) return null
+  const negative = text.startsWith('-')
+  const [yuan, fen = ''] = text.replace('-', '').split('.')
+  const cents = Number(yuan) * 100 + Number(fen.padEnd(2, '0'))
+  if (!Number.isSafeInteger(cents)) return null
+  return negative && cents !== 0 ? -cents : cents
+}
+
 /** 把分格式化为带两位小数的人民币字符串，例如 123456 -> "¥1,234.56" */
 export function formatCents(cents: number): string {
   const sign = cents < 0 ? '-' : ''

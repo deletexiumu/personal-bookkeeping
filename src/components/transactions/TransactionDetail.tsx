@@ -50,7 +50,11 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const categoryOptions = categories.filter((c) => c.type === type)
+  // 归档的分类 / 账户不再可选，但这笔记录当前用的仍然显示
+  const categoryOptions = categories.filter((c) => c.type === type && (!c.archived || c.id === t.categoryId))
+  const accountOptions = accounts.filter(
+    (a) => !a.archived || a.id === t.accountId || a.id === t.transferAccountId,
+  )
   const selectedCategory = categoryOptions.some((c) => c.id === categoryId) ? categoryId : categoryOptions[0]?.id
 
   // ⌘S / Ctrl+S 保存
@@ -114,7 +118,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
     <label className="field">
       <span className="field-label">{label}</span>
       <select className="input" value={value ?? ''} onChange={(e) => onChange(Number(e.target.value))}>
-        {accounts.map((a) => (
+        {accountOptions.map((a) => (
           <option key={a.id} value={a.id}>
             {a.name}
           </option>

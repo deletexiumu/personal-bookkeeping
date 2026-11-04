@@ -4,6 +4,7 @@ import {
   CodeXml,
   Download,
   List,
+  Shapes,
   SlidersHorizontal,
   Tag,
   Target,
@@ -42,7 +43,19 @@ export const TAB_ITEMS_RIGHT: NavItem[] = [
   { route: 'settings', label: '我的', icon: User },
 ]
 
+/** 不在侧边栏里、从设置页进入的页面 */
+export const EXTRA_ITEMS: NavItem[] = [{ route: 'categories', label: '分类', icon: Shapes }]
+
+export function navItemOf(route: RouteName): NavItem {
+  return [...SIDEBAR_ITEMS, ...EXTRA_ITEMS].find((item) => item.route === route)!
+}
+
+/** 侧边栏要高亮的入口：分类归在设置下 */
+export function sidebarRouteOf(route: RouteName): RouteName {
+  return route === 'categories' ? 'settings' : route
+}
+
 /** 移动端 Tab 没有的页面，高亮「我的」 */
 export function tabRouteOf(route: RouteName): RouteName {
-  return ['budget', 'accounts', 'rules', 'api'].includes(route) ? 'settings' : route
+  return ['budget', 'accounts', 'categories', 'rules', 'api'].includes(route) ? 'settings' : route
 }

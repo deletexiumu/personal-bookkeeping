@@ -1,5 +1,8 @@
 import { Dexie, type EntityTable } from 'dexie'
 import type { Account, Category, Transaction } from '../types'
+import { DEFAULT_ACCOUNT_TYPES, DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES } from './defaults'
+
+export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES }
 
 /** 本地数据库，基于浏览器 IndexedDB。数据只存在本机，不上传。 */
 export class BookkeepingDB extends Dexie {
@@ -27,32 +30,39 @@ export class BookkeepingDB extends Dexie {
             row.source ??= 'manual'
           }),
       )
+    // v3：分类图标 / 颜色 / 排序 / 归档，账户类型 / 初始余额 / 排序 / 归档
+    this.version(3)
+      .stores({
+        categories: '++id, type, name, order',
+        accounts: '++id, name, order',
+      })
+      .upgrade(async (tx) => {
+        const presets = new Map(DEFAULT_CATEGORIES.map((c) => [c.name, c]))
+        await tx
+          .table('categories')
+          .toCollection()
+          .modify((c: Category) => {
+            const preset = presets.get(c.name)
+            c.icon ??= preset?.icon
+            c.color ??= preset?.color
+            c.order ??= c.id
+            if (c.icon === undefined) delete c.icon
+            if (c.color === undefined) delete c.color
+          })
+        await tx
+          .table('accounts')
+          .toCollection()
+          .modify((a: Account) => {
+            a.type ??= DEFAULT_ACCOUNT_TYPES[a.name] ?? 'other'
+            a.initialBalance ??= 0
+            a.order ??= a.id
+          })
+      })
     this.on('populate', (tx) => {
       tx.table('categories').bulkAdd(DEFAULT_CATEGORIES)
       tx.table('accounts').bulkAdd(DEFAULT_ACCOUNTS)
     })
   }
 }
-
-export const DEFAULT_CATEGORIES: Category[] = [
-  { name: '餐饮', type: 'expense' },
-  { name: '交通', type: 'expense' },
-  { name: '购物', type: 'expense' },
-  { name: '居住', type: 'expense' },
-  { name: '娱乐', type: 'expense' },
-  { name: '医疗', type: 'expense' },
-  { name: '其他支出', type: 'expense' },
-  { name: '工资', type: 'income' },
-  { name: '奖金', type: 'income' },
-  { name: '理财', type: 'income' },
-  { name: '其他收入', type: 'income' },
-]
-
-export const DEFAULT_ACCOUNTS: Account[] = [
-  { name: '现金' },
-  { name: '银行卡' },
-  { name: '支付宝' },
-  { name: '微信' },
-]
 
 export const db = new BookkeepingDB()
