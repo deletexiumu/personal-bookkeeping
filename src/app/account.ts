@@ -95,7 +95,7 @@ function signOutLocally() {
 }
 
 /** 401 表示会话已失效（在别处退出、改了密码、过期），本机也改成未登录 */
-async function call<T>(path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T> {
+export async function call<T>(path: string, init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown }): Promise<T> {
   try {
     return await apiRequest<T>(target(), path, init)
   } catch (err) {

@@ -1,14 +1,16 @@
-import { ChevronRight, KeyRound, LogOut, MonitorSmartphone, UserX } from 'lucide-react'
+import { ChevronRight, CloudUpload, KeyRound, LogOut, MonitorSmartphone, RefreshCw, UserX } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { changePassword, deleteAccount, listDevices, revokeDevice, signOut, useAccount } from '../../app/account'
 import { hrefOf } from '../../app/router'
+import { describeSync, forgetSyncCursor, syncEngine, useSyncStatus } from '../../app/sync'
+import { db } from '../../db'
 import { ApiError, describeDevice, type DeviceSession } from '../../lib/api'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Dialog'
 import { useToast } from '../ui/toast-context'
 
-type Panel = 'devices' | 'password' | 'delete' | null
+type Panel = 'devices' | 'password' | 'delete' | 'signout' | null
 
 function errorText(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback
@@ -17,6 +19,7 @@ function errorText(err: unknown, fallback: string): string {
 /** 设置页顶部的账号卡片：未登录时引导登录，已登录时管理设备、密码和账号 */
 export function AccountSection() {
   const account = useAccount()
+  const sync = useSyncStatus()
   const toast = useToast()
   const [panel, setPanel] = useState<Panel>(null)
   const close = () => setPanel(null)
@@ -26,7 +29,7 @@ export function AccountSection() {
       <section className="card profile">
         <div className="profile-main">
           <h2 className="t-title-s">我的账本</h2>
-          <p className="t-caption text-tertiary">数据保存在本机浏览器（IndexedDB）。登录后可以在多台设备间同步（开发中）。</p>
+          <p className="t-caption text-tertiary">数据保存在本机浏览器（IndexedDB）。登录后可以在多台设备间同步。</p>
         </div>
         <div className="profile-actions">
           <a className="btn btn-primary btn-sm" href={hrefOf('login')}>
@@ -40,10 +43,11 @@ export function AccountSection() {
     )
   }
 
-  async function handleSignOut() {
-    if (!confirm('退出登录后，这台设备上的账本数据仍然保留。确定退出吗？')) return
-    await signOut()
-    toast.show({ message: '已退出登录' })
+  async function handleSyncNow() {
+    await syncEngine.sync()
+    const { phase, error } = syncEngine.status
+    if (phase === 'error') toast.show({ message: `同步失败：${error ?? ''}` })
+    else if (phase === 'idle') toast.show({ message: '同步完成' })
   }
 
   return (
@@ -52,14 +56,44 @@ export function AccountSection() {
         <div className="profile-main">
           <h2 className="t-title-s">{account.user.email}</h2>
           <p className="t-caption text-tertiary">
-            {account.server ? `服务器：${account.server} · ` : ''}云同步开发中，数据目前仍只存在本机
+            {account.server ? `服务器：${account.server} · ` : ''}
+            {describeSync(sync)}
           </p>
         </div>
-        <Badge tone="income">已登录</Badge>
+        <Badge tone={sync.phase === 'error' ? 'expense' : 'income'}>{sync.phase === 'error' ? '同步失败' : '已登录'}</Badge>
       </section>
       <section className="settings-group">
         <h2 className="t-caption text-tertiary settings-group-title">账号</h2>
         <ul className="card settings-list">
+          {sync.phase === 'needs-choice' ? (
+            <li>
+              <button type="button" className="settings-item" onClick={() => syncEngine.reopenChoice()}>
+                <CloudUpload size={20} aria-hidden="true" className="settings-item-icon" />
+                <span className="t-body-m">同步这台设备的数据</span>
+                <span className="settings-item-value t-body-s text-tertiary">未同步</span>
+                <ChevronRight size={18} aria-hidden="true" className="text-tertiary" />
+              </button>
+            </li>
+          ) : (
+            <li>
+              <button
+                type="button"
+                className="settings-item"
+                disabled={sync.phase === 'syncing'}
+                onClick={() => void handleSyncNow()}
+              >
+                <RefreshCw size={20} aria-hidden="true" className="settings-item-icon" />
+                <span className="t-body-m">立即同步</span>
+                <span className="settings-item-value t-body-s text-tertiary">{describeSync(sync)}</span>
+                <ChevronRight size={18} aria-hidden="true" className="text-tertiary" />
+              </button>
+            </li>
+          )}
+          {sync.phase === 'error' && sync.error && (
+            <li className="settings-note t-caption form-error" role="alert">
+              {sync.error}
+            </li>
+          )}
           <li>
             <button type="button" className="settings-item" onClick={() => setPanel('devices')}>
               <MonitorSmartphone size={20} aria-hidden="true" className="settings-item-icon" />
@@ -75,7 +109,7 @@ export function AccountSection() {
             </button>
           </li>
           <li>
-            <button type="button" className="settings-item" onClick={() => void handleSignOut()}>
+            <button type="button" className="settings-item" onClick={() => setPanel('signout')}>
               <LogOut size={20} aria-hidden="true" className="settings-item-icon" />
               <span className="t-body-m">退出登录</span>
               <ChevronRight size={18} aria-hidden="true" className="text-tertiary" />
@@ -96,10 +130,51 @@ export function AccountSection() {
       <Dialog open={panel === 'password'} title="修改密码" onClose={close}>
         <PasswordForm onDone={close} />
       </Dialog>
+      <Dialog open={panel === 'signout'} title="退出登录" onClose={close}>
+        <SignOutForm pending={sync.pending} onDone={close} />
+      </Dialog>
       <Dialog open={panel === 'delete'} title="注销账号" onClose={close}>
         <DeleteAccountForm onDone={close} />
       </Dialog>
     </>
+  )
+}
+
+function SignOutForm({ pending, onDone }: { pending: number; onDone: () => void }) {
+  const toast = useToast()
+  const [clear, setClear] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    // 退出前把没推送的改动推上去，推不上去也照常退出
+    if (pending > 0) await syncEngine.sync()
+    await signOut()
+    if (clear) {
+      forgetSyncCursor()
+      await db.delete()
+      location.reload()
+      return
+    }
+    toast.show({ message: '已退出登录' })
+    onDone()
+  }
+
+  return (
+    <form className="form" onSubmit={handleSubmit} aria-label="退出登录">
+      <p className="t-body-m">退出后这台设备不再同步。账本数据默认保留在本机，下次登录同一账号会接着同步。</p>
+      {pending > 0 && (
+        <p className="t-body-s form-error">还有 {pending} 条改动没有同步，退出前会先尝试同步。</p>
+      )}
+      <label className="check-field t-body-s">
+        <input type="checkbox" checked={clear} onChange={(e) => setClear(e.target.checked)} />
+        同时清除这台设备上的账本数据（适合公用电脑；云端数据不受影响）
+      </label>
+      <Button type="submit" variant={clear ? 'danger' : 'primary'} block disabled={busy}>
+        {clear ? '退出并清除本机数据' : '退出登录'}
+      </Button>
+    </form>
   )
 }
 
@@ -206,7 +281,7 @@ function DeleteAccountForm({ onDone }: { onDone: () => void }) {
     setBusy(true)
     try {
       await deleteAccount(password)
-      toast.show({ message: '账号已注销，本机数据仍然保留' })
+      toast.show({ message: '账号和云端数据已删除，本机数据仍然保留' })
       onDone()
     } catch (err) {
       setError(errorText(err, '注销失败'))

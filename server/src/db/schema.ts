@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { bigint, index, jsonb, pgSequence, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * 账号。邮箱统一存小写；以后接入微信登录时再加登录方式表，一个账号可绑定多种方式。
@@ -43,3 +43,26 @@ export const invites = pgTable('invites', {
   usedBy: uuid('used_by').references(() => users.id, { onDelete: 'set null' }),
   usedAt: timestamp('used_at', { withTimezone: true }),
 })
+
+/** 同步版本号：每次写入同步记录取一个新值，客户端按它增量拉取 */
+export const syncRev = pgSequence('sync_rev')
+
+/**
+ * 云同步的数据：每个账号每张表每个 uid 一行，data 为客户端的一行数据（外键已换成 uid），删除时 data 为空。
+ * 冲突按 modified_at（客户端修改时间）后写为准；rev 是服务端写入顺序。
+ */
+export const syncRecords = pgTable(
+  'sync_records',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    table: text('tbl').notNull(),
+    uid: text('uid').notNull(),
+    data: jsonb('data').$type<Record<string, unknown>>(),
+    modifiedAt: bigint('modified_at', { mode: 'number' }).notNull(),
+    rev: bigint('rev', { mode: 'number' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.table, t.uid] }), index('sync_records_user_rev_idx').on(t.userId, t.rev)],
+)

@@ -92,7 +92,7 @@ export function LoginPage() {
           </button>
         </div>
         <p className="t-body-s text-secondary">
-          登录后账本会保存到云端，在多台设备间同步（同步功能开发中）。不登录也能照常使用，数据只存在这台设备上。
+          登录后账本会保存到云端，在多台设备间同步。不登录也能照常使用，数据只存在这台设备上。
         </p>
         {registerClosed ? (
           <p className="t-body-m">这个服务暂不开放注册，请联系管理员。</p>

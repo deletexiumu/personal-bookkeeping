@@ -33,6 +33,7 @@ pnpm typecheck
 | `COOKIE_SECURE` | `true` | 会话 Cookie 是否只走 HTTPS；本地用 http 调试时设 `false` |
 | `TRUST_PROXY` | `true` | 是否信任反向代理传来的 `X-Real-IP`，用于按 IP 限频 |
 | `CORS_ORIGINS` | 桌面端 WebView 的来源 | 允许跨域访问的来源，逗号分隔。跨域请求只能用 Bearer 令牌，不带 Cookie；Web 端同源，不需要配 |
+| `SYNC_MAX_RECORDS` | `200000` | 每个账号在云端最多存多少条记录（各表合计，含删除记录），开放注册时防滥用 |
 
 ## 接口
 
@@ -50,6 +51,9 @@ pnpm typecheck
 | `GET /api/auth/sessions` | 已登录设备列表 |
 | `DELETE /api/auth/sessions/:id` | 让某台设备下线 |
 | `DELETE /api/auth/account` | `{ password }` 注销账号，删除全部云端数据 |
+| `POST /api/sync/push` | `{ changes: [{ table, uid, modifiedAt, data }] }` 上传本机改动（一次最多 500 条），返回 `{ accepted, conflicts }` |
+| `GET /api/sync/pull?since=&limit=` | 拉取 `rev` 大于 `since` 的改动，按 `rev` 升序；`more` 为 true 时用返回的 `cursor` 接着拉 |
+| `GET /api/sync/status` | 云端各表的记录数 |
 
 **令牌怎么传**：`tokenMode` 默认 `cookie`，令牌写进 HttpOnly、SameSite=Strict、Path=/api 的 Cookie，页面脚本读不到，Web 端用这个。桌面端和小程序不同源，传 `tokenMode: "bearer"`，令牌在响应的 `token` 字段，之后放在 `Authorization: Bearer` 头里。数据库只存令牌的 SHA-256。
 
@@ -60,7 +64,7 @@ pnpm typecheck
 ```bash
 node dist/admin.js invite 7               # 生成 7 天有效的邀请码
 node dist/admin.js reset-password 邮箱     # 重置为随机密码，所有设备下线
-node dist/admin.js stats                  # 账号数
+node dist/admin.js stats                  # 账号数、云端记录数
 ```
 
 **用内嵌数据库时**，同一时间只能有一个进程打开数据目录，两个进程同时写会损坏数据。所以要先停服务，在一个临时容器里执行，再启动（在 `/opt/taozhubu/` 下）：
@@ -75,14 +79,26 @@ docker compose start api
 
 **用 PostgreSQL 时**没有这个限制，直接对运行中的容器执行：`docker exec taozhubu-api node dist/admin.js invite 7`。
 
-## 同步数据模型（客户端）
+## 云同步
 
-云同步的接口还在做，客户端的数据结构已经为它准备好了（Dexie v7，代码在 `src/db/sync.ts`）：
+离线优先：所有读写都在本机 IndexedDB 里完成，登录后在后台和云端同步，断网时照常记账，联网后自动补上。
 
-- **uid**：七张业务表（账户、分类、流水、预算、规则、导入记录、映射模板）每行都有跨设备唯一的 `uid`。本地仍用自增数字 `id`，同步时外键（如流水的 `categoryId`）换成对方的 `uid` 传输。
-- **modifiedAt / dirty**：本机每次新增、修改都会写 `modifiedAt`（毫秒时间戳）并标 `dirty = 1`，表示待推送；推送成功后清掉。冲突按 `modifiedAt` 后写为准。
+**服务端**（`server/src/sync/routes.ts`，表 `sync_records`）：每个账号每张表每个 `uid` 一行，`data` 是一行数据（外键已换成 uid），删除时为空。推送时按客户端的 `modifiedAt` 后写为准，云端更新（或相同）时不覆盖，在 `conflicts` 里返回云端版本。每次写入从序列 `sync_rev` 取一个新的 `rev`，客户端按 `rev` 增量拉取；同一账号的推送在事务里先锁住账号行，保证 `rev` 按提交顺序出现，拉取不会漏掉。
+
+**客户端数据模型**（Dexie v7，`src/db/sync.ts`）：
+
+- **uid**：七张业务表（账户、分类、流水、预算、规则、导入记录、映射模板）每行都有跨设备唯一的 `uid`。本地仍用自增数字 `id`，同步时外键（如流水的 `categoryId`）换成 `categoryUid` 传输，拉下来再换回本机的 `id`（`src/db/syncData.ts`）。
+- **modifiedAt / dirty**：本机每次新增、修改都会写 `modifiedAt`（毫秒时间戳）并标 `dirty = 1`，表示待推送；推送成功后清掉。
 - **删除记录**：删除一行时在 `syncTombstones` 表里记下 `[表名, uid]`，推送后清掉；同一个 uid 又被加回来（撤销删除、从备份恢复）时自动撤掉删除记录。
 - **固定 uid**：默认分类、默认账户用 `default-category-N` / `default-account-N`，`modifiedAt` 为 0、不推送，每台设备都有同样一份，不会互相覆盖；改过之后才推送。预算按分类固定为 `budget-total` / `budget-<分类 uid>`，同一分类在各设备上是同一条预算。
-- **云端写入**：从云端拉下来的改动通过 `applyRemoteChanges` 写入，uid、modifiedAt、dirty 按调用方给的原样写入，不会被标记为待推送，也不留删除记录。
+- **云端写入**：拉下来的改动通过 `applyRemoteChanges` 写入，不会被标记为待推送，也不留删除记录。
 
-以上字段都由数据库中间件自动维护，业务代码照常增删改即可。从 v6 升级时会先把旧数据原样存一份（`upgradeBackups` 表），设置页「导出与备份」里可以下载，用「从备份恢复」导回。
+以上字段都由数据库中间件自动维护，业务代码照常增删改即可。
+
+**同步流程**（`src/app/sync.ts`）：每轮先拉取全部新改动、写入本机（本机还没推送且改得更晚的保留本机的），再分批推送本机改动。登录后、每分钟、联网时、切回页面时、本机有改动 2 秒后各触发一次；同一时间只跑一轮。
+
+**第一次和账号同步**：本机没有自己的数据，或云端是空的（新注册），直接同步。两边都有数据时弹窗让用户选：合并到云端（推荐），或用云端数据替换本机（先自动备份本机数据）。换账号登录时同样处理。
+
+**自动备份**：从 v6 升级、用云端数据替换本机前，都会把本机数据原样存一份（`upgradeBackups` 表，最多留 3 份），设置页「导出与备份」里可以下载，用「从备份恢复」导回。
+
+**退出登录**：默认保留本机数据，下次登录同一账号接着同步；可以勾选同时清除本机数据（公用电脑）。

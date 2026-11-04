@@ -1,5 +1,6 @@
-import { CloudCheck, Plus, UserRound } from 'lucide-react'
+import { CloudAlert, CloudCheck, Plus, RefreshCw, UserRound } from 'lucide-react'
 import { useAccount } from '../../app/account'
+import { describeSync, useSyncStatus } from '../../app/sync'
 import { SIDEBAR_ITEMS, sidebarRouteOf } from '../../app/nav'
 import { hrefOf, type RouteName } from '../../app/router'
 import { Kbd } from '../ui/Badge'
@@ -14,6 +15,8 @@ interface Props {
 export function Sidebar({ route, onQuickAdd }: Props) {
   const active = sidebarRouteOf(route)
   const { user } = useAccount()
+  const sync = useSyncStatus()
+  const SyncIcon = sync.phase === 'error' || sync.phase === 'needs-choice' ? CloudAlert : sync.phase === 'syncing' ? RefreshCw : UserRound
   return (
     <aside className="sidebar" aria-label="主导航">
       <Brand />
@@ -38,10 +41,10 @@ export function Sidebar({ route, onQuickAdd }: Props) {
       </nav>
       {user ? (
         <a className="sidebar-status" href={hrefOf('settings')} title={`已登录 ${user.email}`}>
-          <UserRound size={18} className="text-income" aria-hidden="true" />
+          <SyncIcon size={18} className={sync.phase === 'error' ? 'text-expense' : 'text-income'} aria-hidden="true" />
           <div className="sidebar-label">
             <span className="t-caption sidebar-email">{user.email}</span>
-            <span className="t-caption text-tertiary">已登录 · 同步开发中</span>
+            <span className="t-caption text-tertiary">{describeSync(sync)}</span>
           </div>
         </a>
       ) : (

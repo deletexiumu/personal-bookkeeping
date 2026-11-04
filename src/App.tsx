@@ -2,9 +2,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { refreshAccount } from './app/account'
 import { usePwaUpdatePrompt } from './app/pwa'
+import { useAutoSync } from './app/sync'
 import { useRoute } from './app/router'
 import { useHotkey } from './app/useHotkey'
 import { AppShell } from './components/layout/AppShell'
+import { SyncChoiceDialog } from './components/settings/SyncChoiceDialog'
 import { TransactionForm } from './components/transactions/TransactionForm'
 import { Dialog } from './components/ui/Dialog'
 import { ToastProvider } from './components/ui/Toast'
@@ -37,6 +39,8 @@ export default function App() {
   useEffect(() => {
     void refreshAccount()
   }, [])
+  // 登录后自动同步
+  useAutoSync()
 
   let page
   if (route === 'transactions') {
@@ -64,6 +68,7 @@ export default function App() {
   return (
     <ToastProvider>
       <PwaUpdatePrompt />
+      <SyncChoiceDialog />
       <AppShell route={route} onQuickAdd={openQuickAdd}>
       {page}
       <Dialog open={quickAddOpen} title="记一笔" onClose={closeQuickAdd}>

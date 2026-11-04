@@ -106,7 +106,7 @@ restrict,command="/opt/taozhubu/deploy.sh" ssh-ed25519 AAAA... taozhubu-deploy@g
 - macOS 的 WKWebView 等同 Safari，构建目标已设为 `safari15`；新特性要留意 Safari 兼容性。
 - 应用名「陶朱簿」是中文，Windows 的 `.msi` 只生成简体中文版（WiX 的英文语言包使用 1252 代码页，写不进中文名）；`.exe`（NSIS）安装包同时支持中英文。
 - 桌面端不支持 Service Worker，打包时会自动关闭 PWA（`vite.config.ts` 通过 `TAURI_ENV_PLATFORM` 判断）。
-- 桌面端数据保存在 WebView 的 IndexedDB 里，位于系统的应用数据目录，与浏览器里的 PWA 数据互不相通。跨端同步依赖后面的同步服务。
+- 桌面端数据保存在 WebView 的 IndexedDB 里，位于系统的应用数据目录，与浏览器里的 PWA 数据互不相通。登录后经自托管的同步服务在多端之间同步。
 
 本地开发桌面端需要 Rust 工具链（`rustup`），然后：
 
@@ -119,7 +119,7 @@ pnpm desktop:build    # 打本机平台的安装包
 
 当前是本地优先：数据只在本机。要提供接口，有两种形态，建议分两步走：
 
-1. **自托管同步服务（进行中）**：后端在 `server/`（Hono，PostgreSQL 或内嵌 PGlite），已有账号与登录会话，同步接口在做，说明见 [server.md](./server.md)。它提供 REST 接口，同时作为多端同步的后端，打包成镜像 `personal-bookkeeping-api`，和 Web 镜像放在同一个 `docker-compose.yml` 里一起部署。**微信小程序读不到浏览器里的数据，跨端只能经过这个服务**，所以它是小程序上线的前提。小程序要求后端是 HTTPS 且域名已 ICP 备案，并在小程序后台配置为合法请求域名。
+1. **自托管同步服务（进行中）**：后端在 `server/`（Hono，PostgreSQL 或内嵌 PGlite），已有账号、登录会话和云同步，说明见 [server.md](./server.md)。它提供 REST 接口，同时作为多端同步的后端，打包成镜像 `personal-bookkeeping-api`，和 Web 镜像放在同一个 `docker-compose.yml` 里一起部署。**微信小程序读不到浏览器里的数据，跨端只能经过这个服务**，所以它是小程序上线的前提。小程序要求后端是 HTTPS 且域名已 ICP 备案，并在小程序后台配置为合法请求域名。
 2. **桌面端本地 API（可选）**：在 Tauri 里开一个只监听 `127.0.0.1` 的 HTTP 接口，方便脚本、快捷指令、自动化工具写入账目，不需要服务器。
 
 两种形态共用 `packages/api-contract` 里的接口定义，见下一节。

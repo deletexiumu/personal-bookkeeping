@@ -19,7 +19,7 @@ export async function startTestServer(env: Record<string, string> = {}): Promise
   const config = loadConfig({ DATA_DIR: 'memory://', DATABASE_URL: databaseUrl, COOKIE_SECURE: 'true', ...env })
   shared ??= openDatabase(config)
   const database = await shared
-  await database.db.execute(sql`truncate users, sessions, invites cascade`)
+  await database.db.execute(sql`truncate users, sessions, invites, sync_records cascade`)
   const clock = { now: new Date('2026-11-04T10:00:00Z') }
   const app = createApp({ db: database.db, config, now: () => clock.now })
   let ip = 0

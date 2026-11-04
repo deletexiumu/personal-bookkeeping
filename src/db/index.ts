@@ -22,7 +22,7 @@ export class BookkeepingDB extends Dexie {
   rules!: EntityTable<CategoryRule, 'id'>
   importTemplates!: EntityTable<ImportTemplate, 'id'>
   syncTombstones!: Dexie.Table<Tombstone, [string, string]>
-  /** 数据库结构升级前自动留的备份（只存最近一次），可在设置页下载 */
+  /** 自动备份：数据库结构升级前、用云端数据替换本机前各留一份，可在设置页下载 */
   upgradeBackups!: Dexie.Table<UpgradeBackup, number>
 
   constructor(name = 'personal-bookkeeping') {
@@ -108,6 +108,7 @@ export class BookkeepingDB extends Dexie {
         if (BACKUP_TABLES.some((t) => data[t].length > 0)) {
           await tx.table('upgradeBackups').add({
             fromVersion: 6,
+            reason: 'upgrade',
             backup: { app: BACKUP_APP, format: BACKUP_FORMAT, schema: 6, exportedAt: new Date(now).toISOString(), data },
           } satisfies UpgradeBackup)
         }
@@ -170,8 +171,10 @@ export class BookkeepingDB extends Dexie {
 
 export interface UpgradeBackup {
   id?: number
-  /** 升级前的数据库版本 */
+  /** 备份时的数据库版本 */
   fromVersion: number
+  /** upgrade：数据库升级前；replace：用云端数据替换本机前 */
+  reason?: 'upgrade' | 'replace'
   backup: Backup
 }
 

@@ -35,7 +35,15 @@ export async function restoreBackup(db: BookkeepingDB, backup: Backup): Promise<
   return plan
 }
 
-/** 最近一次数据库升级前自动留的备份 */
+/** 最近一次自动备份（数据库升级前、用云端数据替换本机前） */
 export async function latestUpgradeBackup(db: BookkeepingDB): Promise<Backup | undefined> {
   return (await db.upgradeBackups.toCollection().last())?.backup
+}
+
+/** 清空本机数据前自动备份一份，只保留最近 3 份 */
+export async function saveAutoBackup(db: BookkeepingDB, reason: 'replace'): Promise<void> {
+  const backup = await exportBackup(db)
+  await db.upgradeBackups.add({ fromVersion: db.verno, reason, backup })
+  const keys = await db.upgradeBackups.toCollection().primaryKeys()
+  if (keys.length > 3) await db.upgradeBackups.bulkDelete(keys.slice(0, keys.length - 3))
 }

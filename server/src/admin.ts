@@ -5,7 +5,7 @@ import { revokeOtherSessions } from './auth/sessions.ts'
 import { loadConfig } from './config.ts'
 import { openDatabase } from './db/client.ts'
 import { dataDirInUse } from './db/lock.ts'
-import { invites, users } from './db/schema.ts'
+import { invites, syncRecords, users } from './db/schema.ts'
 
 /**
  * 服务器上的管理命令，见 docs/server.md：
@@ -17,7 +17,7 @@ import { invites, users } from './db/schema.ts'
 const USAGE = `用法：
   invite [有效天数]          生成一个邀请码（默认 7 天有效）
   reset-password <邮箱>      重置密码为随机密码，并让该账号所有设备下线
-  stats                      账号数量`
+  stats                      账号数、云端记录数`
 
 export async function runAdmin(args: string[], env: Record<string, string | undefined> = process.env): Promise<string> {
   const [command, arg] = args
@@ -50,7 +50,8 @@ export async function runAdmin(args: string[], env: Record<string, string | unde
       return `已重置 ${email} 的密码为：${password}\n请登录后在设置里改成自己的密码。`
     }
     const [{ n }] = await db.select({ n: count() }).from(users)
-    return `账号数：${n}`
+    const [{ r }] = await db.select({ r: count() }).from(syncRecords)
+    return `账号数：${n}\n云端记录数：${r}`
   } finally {
     await close()
   }

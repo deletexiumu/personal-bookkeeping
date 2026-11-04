@@ -177,7 +177,7 @@ export function SettingsPage() {
                 }
               >
                 <History size={20} aria-hidden="true" className="settings-item-icon" />
-                <span className="t-body-m">下载升级前的自动备份</span>
+                <span className="t-body-m">下载最近的自动备份</span>
                 <span className="settings-item-value t-body-s text-tertiary">
                   {new Date(upgradeBackup.exportedAt).toLocaleDateString('zh-CN')}
                 </span>
@@ -194,7 +194,7 @@ export function SettingsPage() {
           </li>
         </ul>
         <p className="t-caption text-tertiary">
-          CSV 可以用 Excel 打开，也能在导入中心按「通用表格」导回。JSON 备份包含分类、账户、预算和规则，用于完整恢复。数据只存在这台设备的浏览器里，清理浏览器数据会一并删除，建议定期导出备份。{upgradeBackup && '应用升级数据结构前会自动留一份备份，升级后如有数据异常，可下载后从备份恢复。'}
+          CSV 可以用 Excel 打开，也能在导入中心按「通用表格」导回。JSON 备份包含分类、账户、预算和规则，用于完整恢复。未登录时数据只存在这台设备的浏览器里，清理浏览器数据会一并删除，建议定期导出备份。{upgradeBackup && '应用升级数据结构前、用云端数据替换本机前会自动留一份备份，如有数据异常，可下载后从备份恢复。'}
         </p>
       </section>
       <section className="settings-group">
