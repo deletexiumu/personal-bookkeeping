@@ -95,13 +95,22 @@ CI 在切换 monorepo 时只需把 `pnpm build` 换成 `pnpm -r build`（或 `pn
 
 | 文件 | 触发 | 做什么 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | PR、推送 `main` | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
+| `.github/workflows/ci.yml` | PR、推送 `main`、手动 | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
 | `.github/workflows/deploy-web.yml` | 推送 `main`、手动 | 构建并部署到 GitHub Pages |
 | `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io |
 | `.github/workflows/release.yml` | `v*` 标签、手动 | 创建草稿 Release，构建 macOS（arm64 / x64）、Windows 安装包和 Web 静态包并上传；手动触发时只构建，产物在 Actions 页面下载 |
+| `.github/workflows/auto-merge.yml` | CI 完成后 | 仓库所有者发起的 PR 在 CI 通过后自动合并，并派发 main 上的 CI、Web 部署和 Docker 构建；其他人的 PR 需手动合并（见 3.1） |
 | `.github/dependabot.yml` | 定时 | 自动提 PR 升级 Actions、npm、Cargo 依赖 |
 
-### 3.1 发版流程
+### 3.1 PR 自动合并
+
+- **谁会自动合并**：作者是仓库所有者（`deletexiumu`，包括 Claude 用这个账号开的 PR）、目标为 `main`、非草稿的 PR。CI 针对 PR 最新提交全部通过后，由 `auto-merge.yml` 以普通合并（merge commit）方式合入。
+- **谁要手动合并**：其他人的 PR，以及 Dependabot 的依赖升级 PR。
+- **临时不想自动合并**：给 PR 打上 `no-automerge` 标签，或先开成草稿。去掉标签后需要在 Actions 里重跑一次该 PR 的 CI（草稿转正式会自动重跑）。
+- **不会合并的情况**：CI 失败或被取消、CI 跑完前又推了新提交（等新提交的 CI）、与 `main` 有冲突（自动合并任务会失败并在 Actions 里报错）。
+- 合并用内置 `GITHUB_TOKEN`，不需要额外密钥，也不依赖仓库的 “Allow auto-merge” 开关。由于 `GITHUB_TOKEN` 的推送不会触发 `push` 事件，工作流会在合并后手动派发 `ci.yml`、`deploy-web.yml`、`docker.yml`。
+
+### 3.2 发版流程
 
 版本号只维护一处：`package.json` 的 `version`（`src-tauri/tauri.conf.json` 直接引用它）。
 
