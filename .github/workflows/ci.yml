@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review：草稿转为正式 PR 时重新跑一次，以便触发自动合并
+    types: [opened, synchronize, reopened, ready_for_review]
+  # 自动合并后由 auto-merge.yml 派发（GITHUB_TOKEN 的推送不会触发 push 事件）
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
