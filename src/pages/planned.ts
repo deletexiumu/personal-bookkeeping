@@ -8,7 +8,7 @@ export interface PlannedPage {
 }
 
 /** 未实现页面的计划说明，与 docs/web-roadmap.md 保持一致 */
-export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import'>, PlannedPage> = {
+export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import' | 'rules'>, PlannedPage> = {
   analysis: {
     title: '分析',
     milestone: 'W5',
@@ -19,12 +19,6 @@ export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings
       '商户 / 标签 / 账户排行与预算执行',
       '点击图表跳转到带筛选条件的明细',
     ],
-  },
-  rules: {
-    title: '规则',
-    milestone: 'W4',
-    summary: '自动分类规则：按商户、备注关键词把导入的流水归到对应分类。',
-    features: ['匹配字段 + 匹配方式 + 关键词 → 目标分类', '规则优先级', '导入预览中改分类时一键生成规则'],
   },
   api: {
     title: '开放接口',

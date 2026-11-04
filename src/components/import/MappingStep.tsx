@@ -4,7 +4,7 @@ import { classify, matchAccount } from '../../lib/import/preview'
 import type { SniffResult } from '../../lib/import/sniff'
 import { mappingProblems, type AmountSign, type ColumnMapping, type ParseResult } from '../../lib/import/table'
 import { formatCents } from '../../lib/money'
-import type { Account, Category } from '../../types'
+import type { Account, Category, CategoryRule } from '../../types'
 import { CategoryIcon } from '../CategoryIcon'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -28,6 +28,11 @@ interface Props {
   accounts: Account[]
   merchantHistory: Map<string, number>
   busy: boolean
+  rules: CategoryRule[]
+  saveTemplate: boolean
+  templateName: string
+  onSaveTemplateChange: (on: boolean) => void
+  onTemplateNameChange: (name: string) => void
   onMappingChange: (col: number, field: FieldKey) => void
   onHeaderRowChange: (row: number) => void
   onAmountSignChange: (sign: AmountSign) => void
@@ -160,6 +165,22 @@ export function MappingStep(props: Props) {
             )
           })}
         </div>
+
+        <div className="template-save">
+          <label className="check-field t-body-s">
+            <input type="checkbox" checked={props.saveTemplate} onChange={(e) => props.onSaveTemplateChange(e.target.checked)} />
+            保存为模板，下次自动识别
+          </label>
+          {props.saveTemplate && (
+            <input
+              className="input template-name"
+              aria-label="模板名称"
+              maxLength={20}
+              value={props.templateName}
+              onChange={(e) => props.onTemplateNameChange(e.target.value)}
+            />
+          )}
+        </div>
       </section>
 
       <aside className="card import-card import-live" aria-label="实时预览">
@@ -177,7 +198,7 @@ export function MappingStep(props: Props) {
         )}
         <ul className="live-list">
           {parsed.rows.slice(0, 5).map((row) => {
-            const hit = classify(row, { categories, merchantHistory: props.merchantHistory })
+            const hit = classify(row, { categories, rules: props.rules, merchantHistory: props.merchantHistory })
             const category = categories.find((c) => c.id === hit?.categoryId)
             const account = accounts.find((a) => a.id === matchAccount(row.accountName, accounts, defaultAccount))
             return (

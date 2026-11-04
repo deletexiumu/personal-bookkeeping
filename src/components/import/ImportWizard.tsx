@@ -4,9 +4,11 @@ import { useMemo, useState } from 'react'
 import { hrefOf } from '../../app/router'
 import { db } from '../../db'
 import { commitImport, loadDedupeCandidates, loadMerchantTransactions } from '../../db/imports'
+import { listImportTemplates, listRules, saveImportTemplate, saveRule } from '../../db/rules'
+import { ruleFromRow } from '../../lib/import/rules'
 import type { FieldKey } from '../../lib/import/fields'
 import { buildMerchantHistory, buildPreview, type PreviewItem } from '../../lib/import/preview'
-import { sniffFile, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
+import { headerSignature, sniffFile, suggestTemplateName, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
 import { parseRows, type AmountSign, type ColumnMapping } from '../../lib/import/table'
 import type { BuiltinTemplate } from '../../lib/import/templates'
 import type { Account, Category, ImportBatch, ImportSource } from '../../types'
@@ -69,6 +71,10 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
   const [busy, setBusy] = useState(false)
   const [batch, setBatch] = useState<ImportBatch | null>(null)
   const [reverting, setReverting] = useState(false)
+  const rules = useLiveQuery(() => listRules(db), [], [])
+  const userTemplates = useLiveQuery(() => listImportTemplates(db), [], [])
+  const [saveTemplate, setSaveTemplate] = useState(false)
+  const [templateName, setTemplateName] = useState('')
   const merchantHistory = useLiveQuery(
     () => loadMerchantTransactions(db).then(buildMerchantHistory),
     [],
@@ -88,7 +94,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     }
     let result: SniffResult
     try {
-      result = await sniffFile(await readBytes(file))
+      result = await sniffFile(await readBytes(file), userTemplates)
     } catch (e) {
       setFileError(e instanceof Error ? `文件读取失败：${e.message}` : '文件读取失败，请重新选择。')
       return
@@ -100,11 +106,19 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     setFileName(file.name)
     setSniff(result)
     setMapping(result.mapping)
+    setTemplateName(suggestTemplateName(file.name))
+    setSaveTemplate(false)
     if (result.template) {
       // 命中内置模板：跳过字段映射，直接预览
       const id = defaultAccountFor(result.template.source, accounts, result.template)
       setAccountId(id)
       await toPreview(result, result.mapping, id)
+    } else if (result.userTemplate) {
+      const t = result.userTemplate
+      const id = accounts.some((a) => a.id === t.accountId) ? t.accountId : accountId
+      setAccountId(id)
+      setAmountSign(t.amountSign)
+      await toPreview(result, result.mapping, id, t.amountSign)
     } else setStep('mapping')
   }
 
@@ -126,7 +140,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     setMapping(next.mapping)
   }
 
-  async function toPreview(target = sniff, columns = mapping, account = accountId) {
+  async function toPreview(target = sniff, columns = mapping, account = accountId, sign = amountSign) {
     if (!target) return
     // 直接打开导入页时账户可能稍后才加载完
     const defaultAccountId = account ?? defaultAccountFor(source, accounts, target.template)
@@ -137,19 +151,44 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     }
     setBusy(true)
     try {
-      const rows = parseRows(target.table, columns, amountSign).rows
+      const rows = parseRows(target.table, columns, sign).rows
       const refs = rows.flatMap((r) => (r.ref ? [r.ref] : []))
       const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
-      setItems(buildPreview(rows, { categories, merchantHistory, accounts, defaultAccountId, existing }))
+      setItems(buildPreview(rows, { categories, rules, merchantHistory, accounts, defaultAccountId, existing }))
       setStep('preview')
     } finally {
       setBusy(false)
     }
   }
 
+  async function nextFromMapping() {
+    if (saveTemplate && sniff) {
+      try {
+        const headers = headerSignature(sniff.lines[sniff.table.headerRow] ?? [])
+        await saveImportTemplate(db, {
+          name: templateName,
+          headers,
+          columns: mapping.slice(0, headers.length).map((m) => m.field),
+          amountSign,
+          accountId: accountId ?? defaultAccountFor(source, accounts),
+        })
+        toast.show({ message: `已保存模板「${templateName.trim()}」，下次自动识别` })
+      } catch (e) {
+        toast.show({ message: e instanceof Error ? e.message : '模板保存失败' })
+        return
+      }
+    }
+    await toPreview()
+  }
+
   async function commit() {
     setBusy(true)
     try {
+      for (const item of items) {
+        if (!item.remember || !item.selected || item.categoryId === undefined) continue
+        const rule = ruleFromRow(item.row, item.categoryId)
+        if (rule) await saveRule(db, rule)
+      }
       const id = await commitImport(db, { source: sniff?.template?.source ?? source, fileName, rowCount: items.length + parsed.errors.length, items })
       setBatch((await db.importBatches.get(id)) ?? null)
       setStep('done')
@@ -197,13 +236,24 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
           onAmountSignChange={setAmountSign}
           onAccountChange={setAccountId}
           onBack={() => setStep('upload')}
-          onNext={() => void toPreview()}
+          saveTemplate={saveTemplate}
+          templateName={templateName}
+          onSaveTemplateChange={setSaveTemplate}
+          onTemplateNameChange={setTemplateName}
+          rules={rules}
+          onNext={() => void nextFromMapping()}
         />
       )}
       {step === 'preview' && (
         <PreviewStep
           fileName={fileName}
-          sourceName={sniff?.template ? `识别为「${sniff.template.name}」模板` : def.name}
+          sourceName={
+            sniff?.template
+              ? `识别为「${sniff.template.name}」模板`
+              : sniff?.userTemplate
+                ? `按模板「${sniff.userTemplate.name}」识别`
+                : def.name
+          }
           items={items}
           errors={parsed.errors}
           categories={categories}
