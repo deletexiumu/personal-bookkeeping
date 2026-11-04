@@ -127,6 +127,8 @@ export interface ParsedRow {
   categoryName?: string
   accountName?: string
   ref?: string
+  /** 账单里的交易类型（如微信的「微信红包」「转账」），只用于自动分类 */
+  kind?: string
   /** 不建议入账的原因，例如交易关闭、不计收支；预览中默认不勾选 */
   skipReason?: string
 }
@@ -201,11 +203,13 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
     const categoryName = first(cells, 'category')
     const accountName = first(cells, 'account')
     const ref = first(cells, 'ref')
+    const kind = first(cells, 'kind')
     if (merchant) row.merchant = merchant
     if (note) row.note = note
     if (categoryName) row.categoryName = categoryName
     if (accountName && accountName !== '/') row.accountName = accountName
     if (ref) row.ref = ref
+    if (kind && kind !== '/') row.kind = kind
     if (skipReason) row.skipReason = skipReason
     rows.push(row)
   }

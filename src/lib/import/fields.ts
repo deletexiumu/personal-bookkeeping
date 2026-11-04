@@ -13,6 +13,7 @@ export type FieldKey =
   | 'account'
   | 'status'
   | 'ref'
+  | 'kind'
 
 export const FIELD_LABELS: Record<FieldKey, string> = {
   ignore: '忽略此列',
@@ -28,6 +29,7 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   account: '账户',
   status: '交易状态',
   ref: '交易单号',
+  kind: '交易类型（仅用于分类）',
 }
 
 export const FIELD_ORDER: FieldKey[] = [
@@ -43,6 +45,7 @@ export const FIELD_ORDER: FieldKey[] = [
   'account',
   'status',
   'ref',
+  'kind',
   'ignore',
 ]
 

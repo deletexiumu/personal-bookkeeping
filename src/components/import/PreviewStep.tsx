@@ -138,6 +138,8 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
           const title = row.merchant ?? row.note ?? '（无备注）'
           const category = categories.find((c) => c.id === item.categoryId)
           const options = categories.filter((c) => c.type === row.type && !c.archived)
+          // 不计收支的中性交易（零钱充值、余额宝转入等）不显示正负号
+          const neutral = row.skipReason === '不计收支'
           return (
             <li key={item.key} className="preview-row" data-status={status}>
               <input
@@ -158,7 +160,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                       {SOURCE_TEXT[item.categorySource]}：{category?.name}
                     </Badge>
                   )}
-                  {row.type === 'income' && <Badge tone="income">收入</Badge>}
+                  {row.type === 'income' && status !== 'ignored' && <Badge tone="income">收入</Badge>}
                 </div>
                 <span className="t-caption text-tertiary">
                   {shortDate(row.date)}
@@ -180,8 +182,8 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   </option>
                 ))}
               </select>
-              <span className={`t-num-m preview-amount ${row.type === 'income' ? 'text-income' : ''}`}>
-                {row.type === 'income' ? '+' : '-'}
+              <span className={`t-num-m preview-amount ${neutral ? 'text-secondary' : row.type === 'income' ? 'text-income' : ''}`}>
+                {neutral ? '' : row.type === 'income' ? '+' : '-'}
                 {formatCents(row.amount)}
               </span>
             </li>

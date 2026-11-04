@@ -73,11 +73,11 @@ export function parseMoneyCell(input: string): number | null {
 
 export type Direction = 'expense' | 'income' | 'neutral'
 
-/** 解析收支方向：支出 / 支 / 消费 / 付款 / 借，收入 / 收 / 退款 / 收款 / 贷，「/」或「不计收支」为中性 */
+/** 解析收支方向：支出 / 支 / 消费 / 付款 / 借，收入 / 收 / 退款 / 收款 / 贷，「/」「不计收支」「资金转移」为中性 */
 export function parseDirection(input: string): Direction | null {
   const text = input.trim()
   if (text === '') return null
-  if (/^[/／-]$|不计收支|中性/.test(text)) return 'neutral'
+  if (/^[/／-]$|不计收支|中性|资金转移/.test(text)) return 'neutral'
   if (/支出|^支$|消费|付款|支付|转出|扣款|^借$|^出$/.test(text)) return 'expense'
   if (/收入|^收$|退款|收款|转入|入账|^贷$|^入$/.test(text)) return 'income'
   return null

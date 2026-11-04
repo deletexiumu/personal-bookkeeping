@@ -9,6 +9,8 @@ import { CategoryIcon } from '../CategoryIcon'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
+const FORMAT_TEXT = { 'utf-8': 'UTF-8 编码', gbk: 'GBK 编码（已自动转换）', xlsx: 'Excel 工作簿' } as const
+
 const STATUS_BADGE = {
   matched: { tone: 'income', text: '已匹配' },
   confirm: { tone: 'warning', text: '需确认' },
@@ -62,7 +64,7 @@ export function MappingStep(props: Props) {
           <div className="file-meta">
             <h2 className="t-body-m-strong">{props.fileName}</h2>
             <p className="t-caption text-tertiary">
-              {sniff.encoding === 'gbk' ? 'GBK 编码（已自动转换）' : 'UTF-8 编码'}
+              {FORMAT_TEXT[sniff.format]}
               {table.headerRow > 0 && ` · 跳过前 ${table.headerRow} 行说明`} · {table.rows.length} 行数据 · {table.headers.length} 列
             </p>
           </div>
@@ -73,7 +75,7 @@ export function MappingStep(props: Props) {
 
         <p className={`import-banner t-body-s ${confirm.length > 0 ? 'import-banner-warning' : ''}`}>
           <Sparkles size={16} aria-hidden="true" />
-          已自动匹配 {matched} / {table.headers.length} 列
+          {sniff.template ? `已按「${sniff.template.name}」模板匹配 ${matched} / ${table.headers.length} 列` : `已自动匹配 ${matched} / ${table.headers.length} 列`}
           {confirm.length > 0 ? `，请确认标黄的「${confirm.join('」「')}」映射。` : '。'}
         </p>
 

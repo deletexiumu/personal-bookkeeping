@@ -35,7 +35,9 @@ export const KEYWORD_DICTIONARY: { type: CategoryType; category: string; keyword
     category: '医疗',
     keywords: ['医院', '诊所', '药房', '药店', '大药房', '医保', '体检', '牙科', '口腔'],
   },
+  { type: 'expense', category: '其他支出', keywords: ['红包', '转账'] },
   { type: 'income', category: '工资', keywords: ['工资', '薪资', '薪金', '代发'] },
   { type: 'income', category: '奖金', keywords: ['奖金', '年终奖', '绩效'] },
   { type: 'income', category: '理财', keywords: ['利息', '结息', '收益', '分红', '余额宝', '理财', '基金'] },
+  { type: 'income', category: '其他收入', keywords: ['红包', '转账', '收款'] },
 ]
