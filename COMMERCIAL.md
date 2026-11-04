@@ -1,6 +1,6 @@
 # 商业授权说明
 
-本项目采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)（以下简称「非商用许可」）发布：**个人免费使用，商业使用需要另行取得授权。**
+金匮簿（本项目）采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)（以下简称「非商用许可」）发布：**个人免费使用，商业使用需要另行取得授权。**
 
 > 本文件是对许可条款的通俗说明，便于理解；如与 [LICENSE](./LICENSE) 原文有出入，以 LICENSE 原文为准。
 
@@ -42,4 +42,4 @@
 
 ## Commercial Licensing (English)
 
-This project is licensed under the [PolyForm Noncommercial License 1.0.0](./LICENSE). It is **free for personal and other noncommercial use**. Any commercial use, including internal use by a company, offering it as a paid product or hosted service, or bundling it into a commercial product, requires a separate commercial license. To request one, open an issue titled "Commercial license" describing your organization, intended use, scale and target platforms.
+Jinkuibu (金匮簿) is licensed under the [PolyForm Noncommercial License 1.0.0](./LICENSE). It is **free for personal and other noncommercial use**. Any commercial use, including internal use by a company, offering it as a paid product or hosted service, or bundling it into a commercial product, requires a separate commercial license. To request one, open an issue titled "Commercial license" describing your organization, intended use, scale and target platforms.

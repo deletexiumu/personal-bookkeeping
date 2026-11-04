@@ -1,6 +1,6 @@
 # 参与贡献
 
-欢迎提交 Issue 和 Pull Request。
+欢迎为金匮簿提交 Issue 和 Pull Request。
 
 ## 开发约定
 

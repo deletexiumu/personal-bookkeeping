@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "个人记账",
+        "title": "金匮簿",
         "width": 1100,
         "height": 760,
         "minWidth": 380,
@@ -30,8 +30,8 @@
     "active": true,
     "targets": ["app", "dmg", "nsis", "msi"],
     "category": "Finance",
-    "shortDescription": "个人记账",
-    "longDescription": "简单、私密的个人记账应用，数据保存在本机。",
+    "shortDescription": "金匮簿：个人记账",
+    "longDescription": "金匮簿：简单、私密的个人记账应用，数据保存在本机。",
     "copyright": "Copyright (c) 2026 deletexiumu",
     "icon": [
       "icons/32x32.png",

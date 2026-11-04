@@ -16,7 +16,7 @@ export default function App() {
   return (
     <main className="app">
       <header className="app-header">
-        <h1>个人记账</h1>
+        <h1>金匮簿</h1>
         <input
           type="month"
           aria-label="选择月份"
