@@ -10,7 +10,7 @@
 | Web 自托管 | Docker 镜像（nginx） | `ghcr.io/deletexiumu/personal-bookkeeping` | `main` → `:edge`；打 `v*` 标签 → `:x.y.z`、`:latest` |
 | macOS | Tauri 2 | `.dmg`（Apple Silicon / Intel 各一个） | 打 `v*` 标签，进入草稿 Release |
 | Windows | Tauri 2 | `.exe`（NSIS 安装包）、`.msi` | 同上 |
-| 离线静态包 | zip | `personal-bookkeeping-web-vX.Y.Z.zip` | 同上，可丢到任意静态服务器 |
+| 离线静态包 | zip | `taozhubu-web-vX.Y.Z.zip` | 同上，可丢到任意静态服务器 |
 | 微信小程序 | 另行实现 | — | 微信开发者工具 / miniprogram-ci 上传 |
 
 ### 1.1 Web：GitHub Pages
@@ -25,15 +25,15 @@
 
 ### 1.2 Web：Docker 自托管
 
-镜像是两阶段构建：Node 22 编译前端，运行时用非 root 的 `nginx-unprivileged`，监听 8080 端口，自带 `/healthz` 健康检查。nginx 已配置好单页应用回落，以及 PWA 需要的缓存策略（`index.html`、`sw.js` 每次校验，`/assets/` 长期缓存）。
+镜像名沿用仓库名 `personal-bookkeeping`。镜像是两阶段构建：Node 22 编译前端，运行时用非 root 的 `nginx-unprivileged`，监听 8080 端口，自带 `/healthz` 健康检查。nginx 已配置好单页应用回落，以及 PWA 需要的缓存策略（`index.html`、`sw.js` 每次校验，`/assets/` 长期缓存）。
 
 ```bash
 # 直接用发布好的镜像
 docker compose up -d            # 访问 http://localhost:8080
 
 # 或在本地构建
-docker build -t personal-bookkeeping .
-docker run -d -p 8080:8080 personal-bookkeeping
+docker build -t taozhubu .
+docker run -d -p 8080:8080 taozhubu
 ```
 
 镜像同时提供 `linux/amd64` 和 `linux/arm64`，可以跑在云服务器、NAS 或树莓派上。注意 PWA 的 Service Worker 要求 HTTPS（`localhost` 除外），对外提供服务时请在前面加一层带证书的反向代理（Caddy、nginx、Traefik 等）。
@@ -49,6 +49,7 @@ docker run -d -p 8080:8080 personal-bookkeeping
 需要注意的差异：
 
 - macOS 的 WKWebView 等同 Safari，构建目标已设为 `safari15`；新特性要留意 Safari 兼容性。
+- 应用名「陶朱簿」是中文，Windows 的 `.msi` 只生成简体中文版（WiX 的英文语言包使用 1252 代码页，写不进中文名）；`.exe`（NSIS）安装包同时支持中英文。
 - 桌面端不支持 Service Worker，打包时会自动关闭 PWA（`vite.config.ts` 通过 `TAURI_ENV_PLATFORM` 判断）。
 - 桌面端数据保存在 WebView 的 IndexedDB 里，位于系统的应用数据目录，与浏览器里的 PWA 数据互不相通。跨端同步依赖后面的同步服务。
 

@@ -1,5 +1,5 @@
 [package]
-name = "personal-bookkeeping"
+name = "taozhubu"
 version = "0.1.0"
 description = "个人记账桌面端（macOS / Windows），复用 Web 前端"
 authors = ["deletexiumu"]

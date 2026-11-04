@@ -1,9 +1,9 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Personal Bookkeeping",
-  "mainBinaryName": "personal-bookkeeping",
+  "productName": "陶朱簿",
+  "mainBinaryName": "taozhubu",
   "version": "../package.json",
-  "identifier": "com.deletexiumu.personalbookkeeping",
+  "identifier": "com.deletexiumu.taozhubu",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -49,7 +49,7 @@
         "displayLanguageSelector": false
       },
       "wix": {
-        "language": ["zh-CN", "en-US"]
+        "language": ["zh-CN"]
       }
     }
   }
