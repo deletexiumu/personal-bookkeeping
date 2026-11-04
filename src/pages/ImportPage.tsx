@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PageHeader } from '../components/layout/AppShell'
 import { ImportCenter } from '../components/import/ImportCenter'
 import { ImportWizard } from '../components/import/ImportWizard'
+import { RestoreWizard } from '../components/import/RestoreWizard'
 import type { Account, Category, ImportSource } from '../types'
 
 interface Props {
@@ -11,8 +12,10 @@ interface Props {
 
 /** 导入（M04 / M05 / D03）：导入中心与导入向导 */
 export function ImportPage({ categories, accounts }: Props) {
-  const [source, setSource] = useState<ImportSource | null>(null)
+  // 从设置页「从备份恢复」进入时带 #/import/json
+  const [source, setSource] = useState<ImportSource | null>(() => (window.location.hash === '#/import/json' ? 'json' : null))
 
+  if (source === 'json') return <RestoreWizard onExit={() => setSource(null)} />
   if (source) {
     return <ImportWizard source={source} categories={categories} accounts={accounts} onExit={() => setSource(null)} />
   }

@@ -505,6 +505,13 @@
   padding: 0 var(--space-4);
 }
 
+button.settings-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
 .settings-item:hover {
   background: var(--bg-subtle);
 }
