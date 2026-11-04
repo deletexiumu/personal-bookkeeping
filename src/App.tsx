@@ -11,6 +11,7 @@ import { listAccounts, listCategories } from './db/catalog'
 import { AccountsPage } from './pages/AccountsPage'
 import { BudgetPage } from './pages/BudgetPage'
 import { CategoriesPage } from './pages/CategoriesPage'
+import { ImportPage } from './pages/ImportPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
@@ -37,6 +38,8 @@ export default function App() {
     page = <BudgetPage categories={categories} />
   } else if (route === 'categories') {
     page = <CategoriesPage categories={categories} />
+  } else if (route === 'import') {
+    page = <ImportPage categories={activeCategories} accounts={activeAccounts} />
   } else if (route === 'settings') {
     page = <SettingsPage />
   } else {

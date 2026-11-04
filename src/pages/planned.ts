@@ -8,7 +8,7 @@ export interface PlannedPage {
 }
 
 /** 未实现页面的计划说明，与 docs/web-roadmap.md 保持一致 */
-export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories' | 'budget'>, PlannedPage> = {
+export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import'>, PlannedPage> = {
   analysis: {
     title: '分析',
     milestone: 'W5',
@@ -18,17 +18,6 @@ export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings
       '收支趋势柱状图、支出构成环形图',
       '商户 / 标签 / 账户排行与预算执行',
       '点击图表跳转到带筛选条件的明细',
-    ],
-  },
-  import: {
-    title: '导入',
-    milestone: 'W4',
-    summary: '把账单交给我：自动识别格式、字段映射、去重、智能分类，确认后才入账。',
-    features: [
-      '微信账单（xlsx / csv）、支付宝账单（csv）',
-      '通用 CSV 字段映射，可保存为模板',
-      '疑似重复默认不勾选，待分类可「记住」为规则',
-      '导入记录可整批撤销；JSON 备份恢复',
     ],
   },
   rules: {
