@@ -823,6 +823,12 @@ button.settings-item {
   min-height: 24px;
 }
 
+.tx-detail-ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .tx-detail-actions {
   display: grid;
   grid-template-columns: 1fr 2fr;

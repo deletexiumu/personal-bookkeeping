@@ -49,7 +49,7 @@ export function FilterBar({ filter, onChange, categories, accounts, count }: Pro
         <input
           ref={searchRef}
           type="search"
-          aria-label="搜索备注、商户、分类、标签、金额"
+          aria-label="搜索备注、商户、分类、标签、金额、交易单号"
           placeholder="搜索备注、商户、金额"
           value={filter.query ?? ''}
           onChange={(e) => set({ query: e.target.value })}
