@@ -57,7 +57,7 @@ docker run -d -p 8080:8080 taozhubu
 | 名称 | 类型 | 值 |
 | --- | --- | --- |
 | `DEPLOY_SSH_KEY` | Secret | 部署专用私钥（ed25519）的全文 |
-| `DEPLOY_KNOWN_HOSTS` | Secret | `ssh-keyscan -p <端口> <主机>` 的输出，用于校验服务器指纹 |
+| `DEPLOY_KNOWN_HOSTS` | Secret | 服务器的 known_hosts 行，用于校验服务器指纹。在服务器上生成，不要用 `ssh-keyscan` 从网络获取 |
 | `DEPLOY_HOST` | Secret | 服务器公网 IP |
 | `DEPLOY_PORT` | Secret | SSH 端口 |
 | `DEPLOY_USER` | Secret | 登录用户，不填时为 `root` |

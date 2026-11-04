@@ -13,13 +13,13 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: docker-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   image:
     runs-on: ubuntu-latest
+    # 只取消过时的镜像构建；concurrency 放在任务级，避免新推送把正在跑的 deploy 中途取消
+    concurrency:
+      group: docker-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
@@ -74,9 +74,9 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          HOST: ${{ secrets.DEPLOY_HOST }}
-          PORT: ${{ secrets.DEPLOY_PORT }}
-          USER: ${{ secrets.DEPLOY_USER }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
@@ -84,9 +84,9 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           tag="sha-${GITHUB_SHA::7}"
           echo "部署镜像标签 $tag"
-          ssh -i ~/.ssh/deploy_key -p "${PORT:-22}" \
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" \
             -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
-            "${USER:-root}@$HOST" "$tag"
+            "${SSH_USER:-root}@$SSH_HOST" "$tag"
       - name: 线上健康检查
         if: steps.check.outputs.skip != 'true' && vars.DEPLOY_URL != ''
         env:
