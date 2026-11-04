@@ -221,6 +221,12 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
             {t.importBatchId !== undefined && <span>批次 #{t.importBatchId}</span>}
           </div>
         </div>
+        {t.externalId && (
+          <div className="field">
+            <span className="field-label">交易单号</span>
+            <span className="tx-detail-ref t-caption text-tertiary">{t.externalId}</span>
+          </div>
+        )}
       </div>
 
       {error && (

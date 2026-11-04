@@ -38,6 +38,7 @@ export function filterTransactions(
       t.categoryId === undefined ? '转账' : categoryName.get(t.categoryId),
       ...(t.tags ?? []),
       amount,
+      t.externalId,
     ]
     return haystack.some((text) => text?.toLowerCase().includes(query))
   })
