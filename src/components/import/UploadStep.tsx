@@ -4,10 +4,16 @@ import { useState, type DragEvent } from 'react'
 interface Props {
   error: string | null
   onFile: (file: File) => void
+  accept?: string
+  hint?: string
 }
 
+const DEFAULT_ACCEPT =
+  '.csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const DEFAULT_HINT = '支持 CSV / TSV / xlsx，自动识别 UTF-8 与 GBK 编码和微信、支付宝账单；文件只在本机解析，不会上传'
+
 /** 第 2 步：选择或拖入文件 */
-export function UploadStep({ error, onFile }: Props) {
+export function UploadStep({ error, onFile, accept = DEFAULT_ACCEPT, hint = DEFAULT_HINT }: Props) {
   const [dragging, setDragging] = useState(false)
 
   function handleDrop(e: DragEvent) {
@@ -31,12 +37,12 @@ export function UploadStep({ error, onFile }: Props) {
       >
         <FileUp size={32} aria-hidden="true" />
         <span className="t-title-s">选择账单文件，或拖到这里</span>
-        <span className="t-body-s text-tertiary">支持 CSV / TSV / xlsx，自动识别 UTF-8 与 GBK 编码和微信、支付宝账单；文件只在本机解析，不会上传</span>
+        <span className="t-body-s text-tertiary">{hint}</span>
         <input
           type="file"
           className="sr-only"
           aria-label="选择账单文件"
-          accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept={accept}
           onChange={(e) => {
             const file = e.target.files?.[0]
             if (file) onFile(file)

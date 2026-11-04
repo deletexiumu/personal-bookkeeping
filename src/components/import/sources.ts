@@ -62,8 +62,7 @@ export const SOURCES: SourceDef[] = [
     hint: '本应用导出的 JSON',
     icon: Braces,
     tone: 'gray',
-    upcoming: 'W4-4',
-    guide: ['从本应用导出的 JSON 备份原样恢复，按 ID 合并'],
+    guide: ['在「设置 → 数据备份」导出 JSON 备份文件', '在这里选择备份文件，确认后按 ID 合并恢复：同 ID 的记录被备份覆盖，备份里没有的本地数据保留', '恢复不能撤销，建议先导出一份当前数据'],
   },
 ]
 

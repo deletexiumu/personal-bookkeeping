@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { db } from './db'
 import { addTransaction } from './db/transactions'
@@ -445,6 +445,66 @@ describe('App', () => {
       await user.selectOptions(within(dialog).getByLabelText('匹配方式'), '等于')
       await user.click(within(dialog).getByRole('button', { name: '保存' }))
       expect(await screen.findByText('商户或备注等于「星巴克」')).toBeInTheDocument()
+    })
+  })
+
+  describe('备份', () => {
+    it('设置页导出 JSON 备份', async () => {
+      await addTransaction(db, { type: 'expense', amount: 100, accountId: 1, date: today() })
+      const blobs: Blob[] = []
+      const create = vi.fn((b: Blob) => {
+        blobs.push(b)
+        return 'blob:backup'
+      })
+      Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+      window.location.hash = '#/settings'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: '导出备份（JSON）' }))
+      expect(await screen.findByText('已导出 1 条流水的备份')).toBeInTheDocument()
+      expect(click).toHaveBeenCalled()
+      const json = JSON.parse(await blobs[0].text())
+      expect(json).toMatchObject({ app: 'taozhubu', format: 1 })
+      expect(json.data.transactions).toHaveLength(1)
+      click.mockRestore()
+    })
+
+    it('从备份恢复：显示新增与覆盖，确认后按 ID 合并', async () => {
+      await addTransaction(db, { type: 'expense', amount: 100, accountId: 1, date: '2026-01-01' })
+      const backup = {
+        app: 'taozhubu',
+        format: 1,
+        schema: 6,
+        exportedAt: '2026-11-04T08:00:00.000Z',
+        data: {
+          transactions: [
+            { id: 1, type: 'expense', amount: 3200, accountId: 1, date: '2026-11-04', note: '午饭', source: 'manual', createdAt: 1, updatedAt: 1 },
+            { id: 9, type: 'income', amount: 500, accountId: 1, date: '2026-11-03', source: 'manual', createdAt: 2, updatedAt: 2 },
+          ],
+          rules: [{ id: 1, field: 'any', match: 'contains', keyword: '星巴克', categoryId: 1, order: 1 }],
+        },
+      }
+      window.location.hash = '#/import/json'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.upload(await screen.findByLabelText('选择账单文件'), new File([JSON.stringify(backup)], 'taozhubu-backup.json'))
+      const table = await screen.findByRole('list', { name: '恢复内容' })
+      expect(within(table).getByText('流水').nextSibling).toHaveTextContent('新增 1 · 覆盖 1')
+      expect(screen.getByText(/本机有 1 条数据与备份的 ID 相同/)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '确认恢复' }))
+      expect(await screen.findByRole('heading', { name: '已恢复 3 条数据' })).toBeInTheDocument()
+      expect(await db.transactions.get(1)).toMatchObject({ note: '午饭', amount: 3200 })
+      expect(await db.rules.count()).toBe(1)
+    })
+
+    it('不是备份文件时提示', async () => {
+      window.location.hash = '#/import'
+      const user = userEvent.setup({ applyAccept: false })
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: /^备份恢复(?!导出)/ }))
+      await user.upload(screen.getByLabelText('选择账单文件'), new File(['{"a":1}'], 'x.json'))
+      expect(await screen.findByRole('alert')).toHaveTextContent('不是陶朱簿导出的备份文件')
     })
   })
 })
