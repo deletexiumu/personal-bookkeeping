@@ -100,11 +100,10 @@ async function mutate(down: DBCore, table: DBCoreTable, req: DBCoreMutateRequest
       v.uid ??= before ?? (await generateUid(down, trans, name, v))
       // 同一个本地 id 换成了另一条记录（按 id 覆盖的备份恢复）：原来那条在其他设备上也要删掉
       if (before && before !== v.uid && !remote) replaced.push({ table: name, uid: before, deletedAt: at })
+      // 云端写入由调用方决定 modifiedAt 和 dirty（拉取的数据不带 dirty）
       if (!remote) {
         v.modifiedAt = at
         v.dirty = 1
-      } else {
-        delete v.dirty
       }
     }
     const res = await table.mutate({ ...req, values } as DBCoreMutateRequest)
@@ -137,7 +136,7 @@ async function generateUid(down: DBCore, trans: DBCoreTransaction, table: SyncTa
 }
 
 /**
- * 在一个事务里写入从云端拉下来的改动：不标记 dirty、保留传入的 modifiedAt、删除时不留删除记录。
+ * 在一个事务里写入从云端拉下来的改动：uid、modifiedAt、dirty 原样写入（不自动标记待推送），删除时不留删除记录。
  */
 export async function applyRemoteChanges<T>(db: Dexie, tables: readonly string[], fn: () => Promise<T>): Promise<T> {
   return db.transaction('rw', [...new Set([...tables, TOMBSTONES])], async (tx) => {
