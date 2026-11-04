@@ -2,7 +2,27 @@
 
 一个面向个人使用的记账软件，目标是让日常收支记录足够简单、数据完全掌握在自己手里。
 
-> 项目处于初始化阶段，技术栈与脚手架将在后续 PR 中加入。
+## 技术栈
+
+- **React 19 + TypeScript + Vite**：前端界面
+- **PWA（vite-plugin-pwa）**：可安装到手机/电脑桌面，离线可用
+- **IndexedDB（Dexie）**：数据只保存在本机浏览器，不上传任何服务器
+- **Vitest + oxlint**：测试与代码检查
+
+金额统一以「分」为单位的整数存储，避免浮点误差。
+
+## 本地开发
+
+需要 Node.js 20+ 和 pnpm 10。
+
+```bash
+pnpm install
+pnpm dev        # 启动开发服务器
+pnpm test       # 运行测试
+pnpm lint       # 代码检查
+pnpm build      # 类型检查并构建到 dist/
+pnpm preview    # 本地预览构建结果（可测试 PWA 安装与离线）
+```
 
 ## 规划功能
 
@@ -16,9 +36,14 @@
 
 ```
 .
-├── docs/        # 设计与需求文档
-├── src/         # 源代码（脚手架搭建后加入）
-└── README.md
+├── docs/              # 设计与需求文档
+├── public/            # 图标等静态资源
+├── src/
+│   ├── components/    # 界面组件
+│   ├── db/            # 本地数据库（Dexie）与数据操作
+│   ├── lib/           # 金额、日期等工具函数
+│   └── types.ts       # 数据类型定义
+└── vite.config.ts     # Vite、PWA 与 Vitest 配置
 ```
 
 ## 开发约定
