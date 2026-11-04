@@ -1,6 +1,6 @@
 # 多端部署与 CI/CD
 
-本文说明个人记账在各个目标端的部署方式、多端代码怎么组织，以及仓库里的 GitHub Actions 工作流各自做什么、需要你在 GitHub 上配置什么。微信小程序的设计与开发另行文档说明，这里只讲它对代码组织和后端的影响。
+本文说明陶朱簿在各个目标端的部署方式、多端代码怎么组织，以及仓库里的 GitHub Actions 工作流各自做什么、需要你在 GitHub 上配置什么。微信小程序的设计与开发另行文档说明，这里只讲它对代码组织和后端的影响。
 
 ## 1. 部署方案总览
 
@@ -10,7 +10,7 @@
 | Web 自托管 | Docker 镜像（nginx） | `ghcr.io/deletexiumu/personal-bookkeeping` | `main` → `:edge`；打 `v*` 标签 → `:x.y.z`、`:latest` |
 | macOS | Tauri 2 | `.dmg`（Apple Silicon / Intel 各一个） | 打 `v*` 标签，进入草稿 Release |
 | Windows | Tauri 2 | `.exe`（NSIS 安装包）、`.msi` | 同上 |
-| 离线静态包 | zip | `personal-bookkeeping-web-vX.Y.Z.zip` | 同上，可丢到任意静态服务器 |
+| 离线静态包 | zip | `taozhubu-web-vX.Y.Z.zip` | 同上，可丢到任意静态服务器 |
 | 微信小程序 | 另行实现 | — | 微信开发者工具 / miniprogram-ci 上传 |
 
 ### 1.1 Web：GitHub Pages
@@ -25,15 +25,15 @@
 
 ### 1.2 Web：Docker 自托管
 
-镜像是两阶段构建：Node 22 编译前端，运行时用非 root 的 `nginx-unprivileged`，监听 8080 端口，自带 `/healthz` 健康检查。nginx 已配置好单页应用回落，以及 PWA 需要的缓存策略（`index.html`、`sw.js` 每次校验，`/assets/` 长期缓存）。
+镜像名沿用仓库名 `personal-bookkeeping`。镜像是两阶段构建：Node 22 编译前端，运行时用非 root 的 `nginx-unprivileged`，监听 8080 端口，自带 `/healthz` 健康检查。nginx 已配置好单页应用回落，以及 PWA 需要的缓存策略（`index.html`、`sw.js` 每次校验，`/assets/` 长期缓存）。
 
 ```bash
 # 直接用发布好的镜像
 docker compose up -d            # 访问 http://localhost:8080
 
 # 或在本地构建
-docker build -t personal-bookkeeping .
-docker run -d -p 8080:8080 personal-bookkeeping
+docker build -t taozhubu .
+docker run -d -p 8080:8080 taozhubu
 ```
 
 镜像同时提供 `linux/amd64` 和 `linux/arm64`，可以跑在云服务器、NAS 或树莓派上。注意 PWA 的 Service Worker 要求 HTTPS（`localhost` 除外），对外提供服务时请在前面加一层带证书的反向代理（Caddy、nginx、Traefik 等）。
@@ -49,6 +49,7 @@ docker run -d -p 8080:8080 personal-bookkeeping
 需要注意的差异：
 
 - macOS 的 WKWebView 等同 Safari，构建目标已设为 `safari15`；新特性要留意 Safari 兼容性。
+- 应用名「陶朱簿」是中文，Windows 的 `.msi` 只生成简体中文版（WiX 的英文语言包使用 1252 代码页，写不进中文名）；`.exe`（NSIS）安装包同时支持中英文。
 - 桌面端不支持 Service Worker，打包时会自动关闭 PWA（`vite.config.ts` 通过 `TAURI_ENV_PLATFORM` 判断）。
 - 桌面端数据保存在 WebView 的 IndexedDB 里，位于系统的应用数据目录，与浏览器里的 PWA 数据互不相通。跨端同步依赖后面的同步服务。
 
@@ -95,13 +96,27 @@ CI 在切换 monorepo 时只需把 `pnpm build` 换成 `pnpm -r build`（或 `pn
 
 | 文件 | 触发 | 做什么 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | PR、推送 `main` | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
+| `.github/workflows/ci.yml` | PR、推送 `main`、手动 | lint、测试、构建；改到 `src-tauri/` 时额外跑 Rust `clippy`；改到 Docker 相关文件时额外验证镜像能构建 |
 | `.github/workflows/deploy-web.yml` | 推送 `main`、手动 | 构建并部署到 GitHub Pages |
 | `.github/workflows/docker.yml` | 推送 `main`、`v*` 标签、手动 | 构建多架构镜像并推送到 ghcr.io |
 | `.github/workflows/release.yml` | `v*` 标签、手动 | 创建草稿 Release，构建 macOS（arm64 / x64）、Windows 安装包和 Web 静态包并上传；手动触发时只构建，产物在 Actions 页面下载 |
+| `.github/workflows/auto-merge.yml` | CI 完成后 | 仓库所有者发起的 PR 在 CI 通过后自动合并，并派发 main 上的 CI、Web 部署和 Docker 构建；其他人的 PR 需手动合并（见 3.1） |
 | `.github/dependabot.yml` | 定时 | 自动提 PR 升级 Actions、npm、Cargo 依赖 |
 
-### 3.1 发版流程
+### 3.1 PR 自动合并
+
+- **谁会自动合并**：作者是仓库所有者（`deletexiumu`，包括 Claude 用这个账号开的 PR）、目标为 `main`、非草稿的 PR。CI 针对 PR 最新提交全部通过后，由 `auto-merge.yml` 以普通合并（merge commit）方式合入。
+- **谁要手动合并**：其他人的 PR，以及 Dependabot 的依赖升级 PR。
+- **临时不想自动合并**：给 PR 打上 `no-automerge` 标签，或先开成草稿。去掉标签后需要在 Actions 里重跑一次该 PR 的 CI（草稿转正式会自动重跑）。
+- **不会合并的情况**：CI 失败或被取消、CI 跑完前又推了新提交（等新提交的 CI）、与 `main` 有冲突（自动合并任务会失败并在 Actions 里报错）。
+- **合并令牌（推荐配置）**：在仓库 Secrets 里放一个所有者的 fine-grained PAT，名为 `AUTO_MERGE_TOKEN`，用它合并等同于本人合并。
+  1. 打开 <https://github.com/settings/personal-access-tokens/new>，Repository access 选 *Only select repositories* → `personal-bookkeeping`。
+  2. Repository permissions 设为：Contents、Pull requests、Workflows 均为 *Read and write*（Metadata 自动为只读）。有效期到期前记得续期。
+  3. 生成后复制令牌，打开 <https://github.com/deletexiumu/personal-bookkeeping/settings/secrets/actions/new>，Name 填 `AUTO_MERGE_TOKEN`，粘贴保存。
+- **不配置令牌时**退回内置 `GITHUB_TOKEN`，不需要额外设置，但有两点限制：改动了 `.github/workflows/` 的 PR 可能会被 GitHub 拒绝合并（Actions 里会报错说明原因，需手动合并）；它产生的推送不会触发 `push` 事件，所以工作流会在合并后手动派发 `ci.yml`、`deploy-web.yml`、`docker.yml`。
+- 两种方式都不依赖仓库的 “Allow auto-merge” 开关，也不需要分支保护规则。
+
+### 3.2 发版流程
 
 版本号只维护一处：`package.json` 的 `version`（`src-tauri/tauri.conf.json` 直接引用它）。
 

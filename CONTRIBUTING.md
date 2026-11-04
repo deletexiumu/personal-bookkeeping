@@ -1,6 +1,6 @@
 # 参与贡献
 
-欢迎提交 Issue 和 Pull Request。
+欢迎为陶朱簿提交 Issue 和 Pull Request。
 
 ## 开发约定
 
