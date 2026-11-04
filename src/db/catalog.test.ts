@@ -66,3 +66,18 @@ describe('账户', () => {
     expect((await listAccounts(db)).map((a) => a.name)).toEqual(['银行卡', '现金', '支付宝', '微信'])
   })
 })
+
+describe('预算', () => {
+  it('设置、修改与清除', async () => {
+    const { setBudget, listBudgets } = await import('./budgets')
+    await setBudget(db, undefined, 600000)
+    await setBudget(db, 1, 150000)
+    await setBudget(db, 1, 180000)
+    expect((await listBudgets(db)).map((b) => [b.categoryId, b.amount])).toEqual([
+      [undefined, 600000],
+      [1, 180000],
+    ])
+    await setBudget(db, undefined, null)
+    expect(await listBudgets(db)).toHaveLength(1)
+  })
+})

@@ -8,7 +8,7 @@ export interface PlannedPage {
 }
 
 /** 未实现页面的计划说明，与 docs/web-roadmap.md 保持一致 */
-export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories'>, PlannedPage> = {
+export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings' | 'accounts' | 'categories' | 'budget'>, PlannedPage> = {
   analysis: {
     title: '分析',
     milestone: 'W5',
@@ -30,12 +30,6 @@ export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'settings
       '疑似重复默认不勾选，待分类可「记住」为规则',
       '导入记录可整批撤销；JSON 备份恢复',
     ],
-  },
-  budget: {
-    title: '预算',
-    milestone: 'W3',
-    summary: '按月设置总预算和分类预算，超支提前提醒。',
-    features: ['总预算 + 分类预算', '明细汇总卡显示预算进度：超过 80% 变橙、超过 100% 变红', '超支分类在统计中置顶标红'],
   },
   rules: {
     title: '规则',

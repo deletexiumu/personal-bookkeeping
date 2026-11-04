@@ -9,6 +9,7 @@ import { ToastProvider } from './components/ui/Toast'
 import { db } from './db'
 import { listAccounts, listCategories } from './db/catalog'
 import { AccountsPage } from './pages/AccountsPage'
+import { BudgetPage } from './pages/BudgetPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -32,6 +33,8 @@ export default function App() {
     page = <TransactionsPage categories={categories} accounts={accounts} onQuickAdd={openQuickAdd} />
   } else if (route === 'accounts') {
     page = <AccountsPage accounts={accounts} />
+  } else if (route === 'budget') {
+    page = <BudgetPage categories={categories} />
   } else if (route === 'categories') {
     page = <CategoriesPage categories={categories} />
   } else if (route === 'settings') {

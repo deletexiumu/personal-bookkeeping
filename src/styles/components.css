@@ -558,3 +558,32 @@ body[data-dialog-open] .toast-region {
 .toast-action:hover {
   background: rgb(255 255 255 / 12%);
 }
+
+/* ---------- 进度条 ---------- */
+.progress {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand-primary);
+  transition: width 0.3s ease;
+}
+
+.progress-warning > span {
+  background: var(--semantic-warning);
+}
+
+.progress-over > span {
+  background: var(--semantic-expense);
+}
+
+.input-error,
+.input-error:focus {
+  border-color: var(--semantic-expense);
+}

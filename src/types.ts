@@ -63,3 +63,14 @@ export interface Account {
   order?: number
   archived?: boolean
 }
+
+/**
+ * 月度预算，每月循环生效。不带分类的是总预算，带分类的是该支出分类的预算。
+ * 一个分类最多一条（总预算也只有一条）。
+ */
+export interface Budget {
+  id?: number
+  categoryId?: number
+  /** 每月金额（分） */
+  amount: number
+}

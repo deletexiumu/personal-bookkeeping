@@ -14,7 +14,9 @@ import { Button } from '../components/ui/Button'
 import { Dialog } from '../components/ui/Dialog'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
+import { listBudgets } from '../db/budgets'
 import { deleteTransaction, listByMonth, restoreTransactions, summarize } from '../db/transactions'
+import { daysLeftInMonth, monthBudgets } from '../lib/budget'
 import { monthOf, today } from '../lib/date'
 import { filterTransactions, isFilterEmpty, type TransactionFilter } from '../lib/filter'
 import type { Account, Category, Transaction } from '../types'
@@ -36,6 +38,8 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   const [filter, setFilter] = useState<TransactionFilter>({})
   const [selectedId, setSelectedId] = useState<number>()
   const transactions = useLiveQuery(() => listByMonth(db, month), [month], [])
+  const budgets = useLiveQuery(() => listBudgets(db), [], [])
+  const totalBudget = useMemo(() => monthBudgets(budgets, transactions).total, [budgets, transactions])
   const lookup = useMemo(() => makeLookup(categories, accounts), [categories, accounts])
   const visible = useMemo(
     () => filterTransactions(transactions, filter, categories),
@@ -98,7 +102,12 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
     <div className={`page ${wide && selected ? 'page-with-panel' : ''}`}>
       <div className="page-main">
         <PageHeader title="明细" actions={<MonthSwitcher month={month} onChange={setMonth} />} />
-        <MonthSummary summary={summarize(isFilterEmpty(filter) ? transactions : visible)} filtered={!isFilterEmpty(filter)} />
+        <MonthSummary
+          summary={summarize(isFilterEmpty(filter) ? transactions : visible)}
+          filtered={!isFilterEmpty(filter)}
+          budget={isFilterEmpty(filter) ? totalBudget : undefined}
+          daysLeft={daysLeftInMonth(month, today())}
+        />
         {transactions.length > 0 && (
           <FilterBar
             filter={filter}

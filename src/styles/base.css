@@ -150,3 +150,7 @@ a {
 .text-expense {
   color: var(--semantic-expense);
 }
+
+.text-warning {
+  color: var(--semantic-warning);
+}
