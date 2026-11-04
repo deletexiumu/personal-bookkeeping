@@ -38,3 +38,8 @@ export function formatDayLabel(date: string, todayDate: string = today()): strin
   if (date === yesterday) return `昨天 · ${base}`
   return ty === y ? base : `${y}年${base}`
 }
+
+/** 返回本地时间，格式 HH:mm */
+export function nowTime(now: Date = new Date()): string {
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}

@@ -5,6 +5,7 @@ import { useHotkey } from './app/useHotkey'
 import { AppShell } from './components/layout/AppShell'
 import { TransactionForm } from './components/transactions/TransactionForm'
 import { Dialog } from './components/ui/Dialog'
+import { ToastProvider } from './components/ui/Toast'
 import { db } from './db'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -30,11 +31,13 @@ export default function App() {
   }
 
   return (
-    <AppShell route={route} onQuickAdd={openQuickAdd}>
+    <ToastProvider>
+      <AppShell route={route} onQuickAdd={openQuickAdd}>
       {page}
       <Dialog open={quickAddOpen} title="记一笔" onClose={closeQuickAdd}>
         <TransactionForm categories={categories} accounts={accounts} onDone={closeQuickAdd} />
-      </Dialog>
-    </AppShell>
+        </Dialog>
+      </AppShell>
+    </ToastProvider>
   )
 }

@@ -47,8 +47,9 @@ export function TransactionList({ transactions, categories, accounts, onDelete, 
               <TransactionRow
                 key={t.id}
                 transaction={t}
-                category={categoryById.get(t.categoryId)}
+                category={t.categoryId === undefined ? undefined : categoryById.get(t.categoryId)}
                 account={accountById.get(t.accountId)}
+                toAccount={t.transferAccountId === undefined ? undefined : accountById.get(t.transferAccountId)}
                 onDelete={onDelete}
               />
             ))}

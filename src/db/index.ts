@@ -14,6 +14,19 @@ export class BookkeepingDB extends Dexie {
       categories: '++id, type, name',
       accounts: '++id, name',
     })
+    // v2：转账、时间、商户、标签、来源、导入批次。旧记录补上 source = 'manual'。
+    this.version(2)
+      .stores({
+        transactions: '++id, date, type, categoryId, accountId, transferAccountId, source, importBatchId, *tags',
+      })
+      .upgrade((tx) =>
+        tx
+          .table('transactions')
+          .toCollection()
+          .modify((row: Partial<Transaction>) => {
+            row.source ??= 'manual'
+          }),
+      )
     this.on('populate', (tx) => {
       tx.table('categories').bulkAdd(DEFAULT_CATEGORIES)
       tx.table('accounts').bulkAdd(DEFAULT_ACCOUNTS)
