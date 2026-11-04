@@ -154,7 +154,7 @@
 
 ![设计规范](images/foundations.png)
 
-- **颜色**：Figma 变量集合 `Color`，Light / Dark 两种模式，分 `bg/*`、`text/*`、`border/*`、`brand/*`、`semantic/*`、`chart/1–6`。实现时映射为 CSS 变量，深色模式跟随系统或手动切换。
+- **颜色**：Figma 变量集合 `Color`，Light / Dark 两种模式，分 `bg/*`、`text/*`、`border/*`、`brand/*`、`semantic/*`、`chart/1–6`。实现时映射为 CSS 变量（见 `src/styles/tokens.css`，`bg/canvas` → `--bg-canvas`），深色模式跟随系统或通过 `<html data-theme>` 手动切换。
 - **收支配色**：默认「绿收红支」，设置中可切换为「红收绿支」。列表中支出金额使用主文字色加「-」，收入用 `semantic/income` 加「+」，避免满屏红色。
 - **字体**：中文 Noto Sans SC（各端回退 PingFang SC / Microsoft YaHei），金额数字 Inter（等宽数字 `font-variant-numeric: tabular-nums`）。样式见 Figma 文本样式 `Title/*`、`Body/*`、`Caption`、`Num/*`。
 - **间距与圆角**：变量集合 `Space & Radius`，间距 4 的倍数；圆角 8 / 12 / 16 / 24。

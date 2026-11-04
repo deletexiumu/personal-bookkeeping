@@ -1,32 +1,40 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
-import { MonthSummaryCard } from './components/MonthSummaryCard'
-import { TransactionForm } from './components/TransactionForm'
-import { TransactionList } from './components/TransactionList'
+import { useCallback, useState } from 'react'
+import { useRoute } from './app/router'
+import { useHotkey } from './app/useHotkey'
+import { AppShell } from './components/layout/AppShell'
+import { TransactionForm } from './components/transactions/TransactionForm'
+import { Dialog } from './components/ui/Dialog'
 import { db } from './db'
-import { listByMonth, summarize } from './db/transactions'
-import { monthOf, today } from './lib/date'
+import { PlaceholderPage } from './pages/PlaceholderPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { TransactionsPage } from './pages/TransactionsPage'
 
 export default function App() {
-  const [month, setMonth] = useState(() => monthOf(today()))
+  const route = useRoute()
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], [])
-  const transactions = useLiveQuery(() => listByMonth(db, month), [month], [])
+
+  const openQuickAdd = useCallback(() => setQuickAddOpen(true), [])
+  const closeQuickAdd = useCallback(() => setQuickAddOpen(false), [])
+  useHotkey('n', openQuickAdd, !quickAddOpen)
+
+  let page
+  if (route === 'transactions') {
+    page = <TransactionsPage categories={categories} accounts={accounts} onQuickAdd={openQuickAdd} />
+  } else if (route === 'settings') {
+    page = <SettingsPage />
+  } else {
+    page = <PlaceholderPage route={route} />
+  }
 
   return (
-    <main className="app">
-      <header className="app-header">
-        <h1>陶朱簿</h1>
-        <input
-          type="month"
-          aria-label="选择月份"
-          value={month}
-          onChange={(e) => e.target.value && setMonth(e.target.value)}
-        />
-      </header>
-      <MonthSummaryCard summary={summarize(transactions)} />
-      <TransactionForm categories={categories} accounts={accounts} />
-      <TransactionList transactions={transactions} categories={categories} accounts={accounts} />
-    </main>
+    <AppShell route={route} onQuickAdd={openQuickAdd}>
+      {page}
+      <Dialog open={quickAddOpen} title="记一笔" onClose={closeQuickAdd}>
+        <TransactionForm categories={categories} accounts={accounts} onDone={closeQuickAdd} />
+      </Dialog>
+    </AppShell>
   )
 }

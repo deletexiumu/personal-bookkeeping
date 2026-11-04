@@ -1,0 +1,152 @@
+/* 基础样式与文本样式（对应 Figma 文本样式 Title/*、Body/*、Caption、Num/*） */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 文本样式 */
+.t-title-l {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 700;
+}
+
+.t-title-m {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+}
+
+.t-title-s {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+.t-body-m {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.t-body-m-strong {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+}
+
+.t-body-s {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.t-caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.t-num-xl,
+.t-num-l,
+.t-num-m,
+.t-num-s {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+.t-num-xl {
+  font-size: 34px;
+  line-height: 40px;
+  font-weight: 700;
+}
+
+.t-num-l {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.t-num-m {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.t-num-s {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-tertiary {
+  color: var(--text-tertiary);
+}
+
+.text-income {
+  color: var(--semantic-income);
+}
+
+.text-expense {
+  color: var(--semantic-expense);
+}
