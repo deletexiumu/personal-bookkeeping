@@ -6,8 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-IMAGE=ghcr.io/deletexiumu/personal-bookkeeping
-CONTAINER=taozhubu-web
+# Web 前端和后端 API 两个镜像，标签相同
+IMAGES=(ghcr.io/deletexiumu/personal-bookkeeping ghcr.io/deletexiumu/personal-bookkeeping-api)
+CONTAINERS=(taozhubu-web taozhubu-api)
 tag="${1:-${SSH_ORIGINAL_COMMAND:-edge}}"
 
 if [[ ! "$tag" =~ ^(edge|latest|sha-[0-9a-f]{7,40}|[0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
@@ -25,6 +26,9 @@ if [[ -f .env ]]; then
   prev="${prev:-$tag}"
 fi
 
+# 后端内嵌数据库的数据目录，容器里以 uid 1000（node）运行
+install -d -o 1000 -g 1000 -m 700 data
+
 up() {
   echo "TAOZHUBU_TAG=$1" > .env
   docker compose pull -q
@@ -32,20 +36,25 @@ up() {
 }
 
 wait_healthy() {
-  local s=missing
-  for _ in $(seq 1 30); do
-    s="$(docker inspect -f '{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null || echo missing)"
-    [[ "$s" == healthy ]] && return 0
-    sleep 3
+  local c s
+  for c in "${CONTAINERS[@]}"; do
+    s=missing
+    for _ in $(seq 1 30); do
+      s="$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo missing)"
+      [[ "$s" == healthy ]] && break
+      sleep 3
+    done
+    if [[ "$s" != healthy ]]; then
+      echo "$c 健康检查未通过，当前状态：$s" >&2
+      docker logs --tail 50 "$c" >&2 || true
+      return 1
+    fi
   done
-  echo "健康检查未通过，当前状态：$s" >&2
-  return 1
 }
 
-echo "部署 $IMAGE:$tag（上一个：$prev）"
+echo "部署 $tag（上一个：$prev）"
 up "$tag"
 if ! wait_healthy; then
-  docker logs --tail 50 "$CONTAINER" >&2 || true
   if [[ "$prev" != "$tag" ]]; then
     echo "回滚到 $prev" >&2
     up "$prev"
@@ -55,11 +64,15 @@ if ! wait_healthy; then
 fi
 
 # 只保留当前和上一个标签的镜像
-docker images "$IMAGE" --format '{{.Tag}}' \
-  | grep -vxF -e "$tag" -e "$prev" -e '<none>' \
-  | xargs -r -I{} docker rmi "$IMAGE:{}" >/dev/null 2>&1 || true
+for image in "${IMAGES[@]}"; do
+  docker images "$image" --format '{{.Tag}}' \
+    | grep -vxF -e "$tag" -e "$prev" -e '<none>' \
+    | xargs -r -I{} docker rmi "$image:{}" >/dev/null 2>&1 || true
+done
 docker image prune -f \
   --filter "label=org.opencontainers.image.source=https://github.com/deletexiumu/personal-bookkeeping" \
   >/dev/null 2>&1 || true
 
-echo "部署完成：$(docker inspect -f '{{.Config.Image}} {{.State.Health.Status}}' "$CONTAINER")"
+for c in "${CONTAINERS[@]}"; do
+  echo "部署完成：$(docker inspect -f '{{.Config.Image}} {{.State.Health.Status}}' "$c")"
+done

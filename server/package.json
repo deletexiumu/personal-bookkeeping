@@ -1,0 +1,38 @@
+{
+  "name": "@taozhubu/server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "陶朱簿后端：账号、会话、云同步与开放接口",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch --experimental-strip-types src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "admin": "node dist/admin.js"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@hono/node-server": "^2.1.6",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.16",
+    "postgres": "^4.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "~7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
