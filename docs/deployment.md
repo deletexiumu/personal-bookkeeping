@@ -40,13 +40,13 @@ docker run -d -p 8080:8080 taozhubu
 
 #### 1.2.1 hkserver 上的部署
 
-线上地址是 <https://taozhubu.deepai.wiki/>。服务器配置文件放在仓库的 `deploy/server/`：
+线上域名不写进仓库，只出现在服务器上的 nginx 配置和仓库的 `DEPLOY_URL` 变量里。服务器配置文件放在仓库的 `deploy/server/`：
 
 | 仓库文件 | 服务器位置 | 作用 |
 | --- | --- | --- |
 | `deploy/server/docker-compose.yml` | `/opt/taozhubu/docker-compose.yml` | 容器 `taozhubu-web`，不占宿主端口，只挂 `pigsty_pigsty` 网络 |
 | `deploy/server/deploy.sh` | `/opt/taozhubu/deploy.sh` | 拉镜像、重建容器、等健康检查，不通过就回滚到上一个标签 |
-| `deploy/server/taozhubu.conf` | `/opt/pigsty/nginx/conf.d/taozhubu.conf` | pigsty-nginx 的站点配置，按容器名反代 |
+| `deploy/server/taozhubu.conf.template` | `/opt/pigsty/nginx/conf.d/taozhubu.conf` | pigsty-nginx 的站点配置模板，按容器名反代，域名部署时填入 |
 
 请求链路：宿主 nginx 在 443 端口按 SNI 分流，转给 pigsty-nginx（`127.0.0.1:4433`），再按容器名转给 `taozhubu-web:8080`。证书由 certbot 的 dns-cloudflare 插件签发，和服务器上其他站点一样自动续期。
 
@@ -61,7 +61,7 @@ docker run -d -p 8080:8080 taozhubu
 | `DEPLOY_HOST` | Secret | 服务器公网 IP |
 | `DEPLOY_PORT` | Secret | SSH 端口 |
 | `DEPLOY_USER` | Secret | 登录用户，不填时为 `root` |
-| `DEPLOY_URL` | Variable | `https://taozhubu.deepai.wiki`，部署后检查 `/healthz` |
+| `DEPLOY_URL` | Variable | 站点地址，如 `https://你的域名`，部署后检查 `/healthz` |
 
 没配 `DEPLOY_SSH_KEY` 时 `deploy` 任务直接跳过，不影响镜像发布。
 
@@ -73,7 +73,14 @@ restrict,command="/opt/taozhubu/deploy.sh" ssh-ed25519 AAAA... taozhubu-deploy@g
 
 **手动部署或回滚**：在服务器上运行 `bash /opt/taozhubu/deploy.sh`，不带参数部署 `edge`，也可以指定标签，例如 `bash /opt/taozhubu/deploy.sh sha-1a2b3c4` 或 `0.2.0`。当前标签记在 `/opt/taozhubu/.env`。
 
-**改了 `deploy/server/` 下的文件**：自动部署只更新镜像，不同步这些配置文件，需要手动复制到服务器。改了 nginx 配置后，先运行 `docker exec pigsty-nginx nginx -t`，通过后再运行 `docker exec pigsty-nginx nginx -s reload`。
+**改了 `deploy/server/` 下的文件**：自动部署只更新镜像，不同步这些配置文件，需要手动复制到服务器。nginx 配置是模板，在服务器上生成：
+
+```bash
+TAOZHUBU_DOMAIN=你的域名 envsubst '${TAOZHUBU_DOMAIN}' \
+  < deploy/server/taozhubu.conf.template > /opt/pigsty/nginx/conf.d/taozhubu.conf
+```
+
+`envsubst` 后面的参数限定只替换 `${TAOZHUBU_DOMAIN}`，配置里 nginx 自己的 `$host` 等变量保持原样。改了 nginx 配置后，先运行 `docker exec pigsty-nginx nginx -t`，通过后再运行 `docker exec pigsty-nginx nginx -s reload`。
 
 ### 1.3 macOS / Windows：Tauri 2
 

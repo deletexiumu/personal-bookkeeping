@@ -1,12 +1,13 @@
-# 陶朱簿 Web — taozhubu.deepai.wiki
-# 放在服务器的 /opt/pigsty/nginx/conf.d/，由 pigsty-nginx 容器加载。
+# 陶朱簿 Web 的 pigsty-nginx 站点配置模板。域名不写进仓库，部署时用 envsubst 填入：
+#   TAOZHUBU_DOMAIN=你的域名 envsubst '${TAOZHUBU_DOMAIN}' < taozhubu.conf.template > /opt/pigsty/nginx/conf.d/taozhubu.conf
+# 生成的文件由 pigsty-nginx 容器加载。
 # 链路：宿主 nginx stream（:443 ssl_preread + proxy_protocol）→ pigsty-nginx（:4433）→ taozhubu-web:8080
-# 证书：certbot dns-cloudflare 签发，位于 /etc/letsencrypt/live/taozhubu.deepai.wiki/
+# 证书：certbot dns-cloudflare 签发，位于 /etc/letsencrypt/live/${TAOZHUBU_DOMAIN}/
 
 # HTTP：acme-challenge，其余跳转 HTTPS
 server {
     listen 80;
-    server_name taozhubu.deepai.wiki;
+    server_name ${TAOZHUBU_DOMAIN};
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / { return 301 https://$host$request_uri; }
 }
@@ -15,10 +16,10 @@ server {
 server {
     listen 443 ssl proxy_protocol;
     http2 on;
-    server_name taozhubu.deepai.wiki;
+    server_name ${TAOZHUBU_DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/taozhubu.deepai.wiki/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/taozhubu.deepai.wiki/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${TAOZHUBU_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${TAOZHUBU_DOMAIN}/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
