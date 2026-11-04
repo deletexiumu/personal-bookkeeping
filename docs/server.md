@@ -74,3 +74,15 @@ docker compose start api
 服务运行时会在数据目录里放一个每 10 秒刷新的锁文件，忘了停服务时管理命令会拒绝执行并提示上面的命令。
 
 **用 PostgreSQL 时**没有这个限制，直接对运行中的容器执行：`docker exec taozhubu-api node dist/admin.js invite 7`。
+
+## 同步数据模型（客户端）
+
+云同步的接口还在做，客户端的数据结构已经为它准备好了（Dexie v7，代码在 `src/db/sync.ts`）：
+
+- **uid**：七张业务表（账户、分类、流水、预算、规则、导入记录、映射模板）每行都有跨设备唯一的 `uid`。本地仍用自增数字 `id`，同步时外键（如流水的 `categoryId`）换成对方的 `uid` 传输。
+- **modifiedAt / dirty**：本机每次新增、修改都会写 `modifiedAt`（毫秒时间戳）并标 `dirty = 1`，表示待推送；推送成功后清掉。冲突按 `modifiedAt` 后写为准。
+- **删除记录**：删除一行时在 `syncTombstones` 表里记下 `[表名, uid]`，推送后清掉；同一个 uid 又被加回来（撤销删除、从备份恢复）时自动撤掉删除记录。
+- **固定 uid**：默认分类、默认账户用 `default-category-N` / `default-account-N`，`modifiedAt` 为 0、不推送，每台设备都有同样一份，不会互相覆盖；改过之后才推送。预算按分类固定为 `budget-total` / `budget-<分类 uid>`，同一分类在各设备上是同一条预算。
+- **云端写入**：从云端拉下来的改动通过 `applyRemoteChanges` 写入，不会被标记为待推送，也不留删除记录。
+
+以上字段都由数据库中间件自动维护，业务代码照常增删改即可。从 v6 升级时会先把旧数据原样存一份（`upgradeBackups` 表），设置页「导出与备份」里可以下载，用「从备份恢复」导回。

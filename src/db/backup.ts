@@ -34,3 +34,8 @@ export async function restoreBackup(db: BookkeepingDB, backup: Backup): Promise<
   })
   return plan
 }
+
+/** 最近一次数据库升级前自动留的备份 */
+export async function latestUpgradeBackup(db: BookkeepingDB): Promise<Backup | undefined> {
+  return (await db.upgradeBackups.toCollection().last())?.backup
+}

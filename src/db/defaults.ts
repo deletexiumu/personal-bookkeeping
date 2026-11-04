@@ -1,6 +1,13 @@
 import type { Account, AccountType, Category, Tone } from '../types'
 
+/**
+ * 默认分类和账户用固定的 uid：每台设备首次打开都会写入同样的一套，同步时认作同一条记录，不会出现两份「餐饮」。
+ */
+export const defaultCategoryUid = (order: number) => `default-category-${order}`
+export const defaultAccountUid = (order: number) => `default-account-${order}`
+
 const category = (name: string, type: Category['type'], icon: string, color: Tone, order: number): Category => ({
+  uid: defaultCategoryUid(order),
   name,
   type,
   icon,
@@ -32,6 +39,7 @@ export const DEFAULT_ACCOUNT_TYPES: Record<string, AccountType> = {
 }
 
 export const DEFAULT_ACCOUNTS: Account[] = Object.entries(DEFAULT_ACCOUNT_TYPES).map(([name, type], i) => ({
+  uid: defaultAccountUid(i + 1),
   name,
   type,
   initialBalance: 0,
