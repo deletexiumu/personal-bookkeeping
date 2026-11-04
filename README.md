@@ -1,5 +1,7 @@
 # 陶朱簿
 
+> **生财有道，管账有方。**
+>
 > 个人记账软件 · Personal Bookkeeping
 
 [![CI](https://github.com/deletexiumu/personal-bookkeeping/actions/workflows/ci.yml/badge.svg)](https://github.com/deletexiumu/personal-bookkeeping/actions/workflows/ci.yml)
