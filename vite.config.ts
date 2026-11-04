@@ -21,6 +21,8 @@ export default defineConfig({
     // Tauri 开发模式依赖固定端口（见 src-tauri/tauri.conf.json 的 devUrl）
     port: 5173,
     strictPort: true,
+    // 本地联调后端：cd server && DATA_DIR=.data COOKIE_SECURE=false pnpm dev
+    proxy: { '/api': 'http://127.0.0.1:8787' },
   },
   envPrefix: ['VITE_', 'TAURI_ENV_'],
   define: {
@@ -43,6 +45,8 @@ export default defineConfig({
       workbox: {
         // 预缓存 Inter 拉丁字符子集，离线时金额数字字体不回退
         globPatterns: ['**/*.{js,css,html}', 'assets/inter-latin-wght-normal-*.woff2'],
+        // 后端接口不能被 Service Worker 当成页面导航回落到 index.html
+        navigateFallbackDenylist: [/^\/api\//],
       },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {

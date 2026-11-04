@@ -18,6 +18,11 @@ const envSchema = z.object({
   COOKIE_SECURE: bool.default(true),
   /** 是否信任反向代理传来的 X-Real-IP / X-Forwarded-For，用于按 IP 限频 */
   TRUST_PROXY: bool.default(true),
+  /**
+   * 允许跨域访问的来源，逗号分隔。默认是桌面端（Tauri）的 WebView 来源；
+   * Web 端与接口同源，不需要列在这里。跨域请求只能用 Bearer 令牌，不带 Cookie。
+   */
+  CORS_ORIGINS: z.string().default('tauri://localhost,http://tauri.localhost,https://tauri.localhost'),
 })
 
 export interface Config {
@@ -28,6 +33,7 @@ export interface Config {
   sessionTtlMs: number
   cookieSecure: boolean
   trustProxy: boolean
+  corsOrigins: string[]
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -45,5 +51,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     sessionTtlMs: e.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
     cookieSecure: e.COOKIE_SECURE,
     trustProxy: e.TRUST_PROXY,
+    corsOrigins: e.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean),
   }
 }

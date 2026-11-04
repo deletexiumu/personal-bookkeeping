@@ -17,6 +17,8 @@ TEST_DATABASE_URL=postgres://… pnpm test       # 换成真实的 PostgreSQL（
 pnpm typecheck
 ```
 
+前端联调：另开一个终端在仓库根目录运行 `pnpm dev`，Vite 会把 `/api` 代理到 `127.0.0.1:8787`，打开 `http://localhost:5173/#/login` 即可注册登录。
+
 改了 `src/db/schema.ts` 后运行 `pnpm db:generate` 生成迁移 SQL（`server/drizzle/`），连同 schema 一起提交。服务启动时自动执行未执行过的迁移。迁移只做加法（加表、加列），这样部署失败回滚到旧镜像时旧代码仍能用新库。
 
 ## 配置（环境变量）
@@ -30,6 +32,7 @@ pnpm typecheck
 | `SESSION_TTL_DAYS` | `30` | 会话有效天数，使用中自动续期 |
 | `COOKIE_SECURE` | `true` | 会话 Cookie 是否只走 HTTPS；本地用 http 调试时设 `false` |
 | `TRUST_PROXY` | `true` | 是否信任反向代理传来的 `X-Real-IP`，用于按 IP 限频 |
+| `CORS_ORIGINS` | 桌面端 WebView 的来源 | 允许跨域访问的来源，逗号分隔。跨域请求只能用 Bearer 令牌，不带 Cookie；Web 端同源，不需要配 |
 
 ## 接口
 

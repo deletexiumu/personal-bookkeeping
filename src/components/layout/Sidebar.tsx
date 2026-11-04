@@ -1,4 +1,5 @@
-import { CloudCheck, Plus } from 'lucide-react'
+import { CloudCheck, Plus, UserRound } from 'lucide-react'
+import { useAccount } from '../../app/account'
 import { SIDEBAR_ITEMS, sidebarRouteOf } from '../../app/nav'
 import { hrefOf, type RouteName } from '../../app/router'
 import { Kbd } from '../ui/Badge'
@@ -12,6 +13,7 @@ interface Props {
 /** 桌面端侧边栏（≥ 768 显示；768–1279 折叠为 72px 图标栏） */
 export function Sidebar({ route, onQuickAdd }: Props) {
   const active = sidebarRouteOf(route)
+  const { user } = useAccount()
   return (
     <aside className="sidebar" aria-label="主导航">
       <Brand />
@@ -34,13 +36,23 @@ export function Sidebar({ route, onQuickAdd }: Props) {
           </a>
         ))}
       </nav>
-      <div className="sidebar-status" title="数据仅保存在本机浏览器中">
-        <CloudCheck size={18} className="text-income" aria-hidden="true" />
-        <div className="sidebar-label">
-          <span className="t-caption">本地优先</span>
-          <span className="t-caption text-tertiary">数据仅存本机</span>
-        </div>
-      </div>
+      {user ? (
+        <a className="sidebar-status" href={hrefOf('settings')} title={`已登录 ${user.email}`}>
+          <UserRound size={18} className="text-income" aria-hidden="true" />
+          <div className="sidebar-label">
+            <span className="t-caption sidebar-email">{user.email}</span>
+            <span className="t-caption text-tertiary">已登录 · 同步开发中</span>
+          </div>
+        </a>
+      ) : (
+        <a className="sidebar-status" href={hrefOf('login')} title="数据仅保存在本机浏览器中，登录后可同步">
+          <CloudCheck size={18} className="text-income" aria-hidden="true" />
+          <div className="sidebar-label">
+            <span className="t-caption">本地优先</span>
+            <span className="t-caption text-tertiary">数据仅存本机 · 登录</span>
+          </div>
+        </a>
+      )}
     </aside>
   )
 }

@@ -15,6 +15,7 @@ export const ROUTES = [
   'rules',
   'api',
   'settings',
+  'login',
 ] as const
 
 export type RouteName = (typeof ROUTES)[number]

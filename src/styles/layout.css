@@ -103,6 +103,22 @@
 
 .sidebar-status .sidebar-label {
   display: grid;
+  min-width: 0;
+}
+
+a.sidebar-status {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.sidebar-status:hover {
+  background: var(--border-default);
+}
+
+.sidebar-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- 底部 Tab ---------- */
@@ -518,6 +534,10 @@ button.settings-item {
 
 .settings-item-icon {
   color: var(--brand-primary);
+}
+
+.settings-item-icon.text-expense {
+  color: var(--semantic-expense);
 }
 
 .settings-item:has(.settings-item-value) {
@@ -1107,4 +1127,85 @@ button.settings-item {
 
 .budget-status {
   margin: 0;
+}
+
+/* ---------- 登录 / 注册、账号 ---------- */
+.page-narrow {
+  max-width: 480px;
+}
+
+.page-narrow .page-header {
+  padding-top: var(--space-4);
+}
+
+.auth-card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--semantic-expense);
+}
+
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profile-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-main .t-title-s {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.device-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.device-item > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
