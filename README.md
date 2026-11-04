@@ -1,11 +1,11 @@
-# 金匮簿
+# 陶朱簿
 
 > 个人记账软件 · Personal Bookkeeping
 
 [![CI](https://github.com/deletexiumu/personal-bookkeeping/actions/workflows/ci.yml/badge.svg)](https://github.com/deletexiumu/personal-bookkeeping/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](./LICENSE)
 
-**金匮簿**是一款面向个人的记账软件：多端可用、支持多种方式导入账单、自带统计分析，并提供开放接口，让你的账本数据始终掌握在自己手里。
+**陶朱簿**是一款面向个人的记账软件：多端可用、支持多种方式导入账单、自带统计分析，并提供开放接口，让你的账本数据始终掌握在自己手里。
 
 **个人免费使用，商业使用需要授权**，详见 [商业授权说明](./COMMERCIAL.md)。
 
@@ -96,12 +96,12 @@ pnpm desktop:build  # 打本机平台的安装包
 
 ## 许可证
 
-金匮簿采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)：
+陶朱簿采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)：
 
 - ✅ 个人使用、学习研究、非营利组织使用：免费
 - ✅ 在非商用前提下修改、自行部署、再分发（须保留 LICENSE 与版权声明）
 - ❌ 公司内部使用、作为付费产品或 SaaS 提供、集成进商业产品：需要 [商业授权](./COMMERCIAL.md)
 
-注意：非商用许可不属于 OSI 定义的「开源许可证」，金匮簿是源码公开（source-available）而非开源软件。
+注意：非商用许可不属于 OSI 定义的「开源许可证」，陶朱簿是源码公开（source-available）而非开源软件。
 
 Copyright (c) 2026 deletexiumu

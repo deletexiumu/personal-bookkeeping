@@ -1,7 +1,7 @@
 [package]
 name = "personal-bookkeeping"
 version = "0.1.0"
-description = "金匮簿桌面端（macOS / Windows），复用 Web 前端"
+description = "陶朱簿桌面端（macOS / Windows），复用 Web 前端"
 authors = ["deletexiumu"]
 license-file = "../LICENSE"
 repository = "https://github.com/deletexiumu/personal-bookkeeping"
