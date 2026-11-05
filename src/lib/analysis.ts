@@ -1,4 +1,5 @@
 import type { Category, CategoryType, Transaction } from '../types'
+import { formatCents } from './money'
 import type { Bucket } from './period'
 
 /** 一个区间的收支概况；转账不计入 */
@@ -37,6 +38,12 @@ export function formatChange(ratio: number): string {
   const percent = Math.round(ratio * 1000) / 10
   if (percent === 0) return '持平'
   return `${percent > 0 ? '+' : ''}${percent}%`
+}
+
+/** 净额带正负号：收入多为 +，支出多为 −；0 不带符号 */
+export function formatNet(cents: number): string {
+  if (cents === 0) return formatCents(0)
+  return `${cents > 0 ? '+' : '−'}${formatCents(Math.abs(cents))}`
 }
 
 /** 0.234 -> '23.4%' */
@@ -83,6 +90,9 @@ export function niceTicks(max: number, count = 4): number[] {
   return ticks
 }
 
+/** 分析页的口径：只看支出、只看收入，或收支合计 */
+export type AnalysisView = CategoryType | 'all'
+
 /** 构成 / 排行中的一项 */
 export interface ShareItem {
   /** 分类 ID 或商户名，用于下钻 */
@@ -128,6 +138,55 @@ export function merchantOf(t: Transaction): string | undefined {
   return t.merchant?.trim() || t.note?.trim() || undefined
 }
 
+/**
+ * 拆分分析页的关键字：空格、逗号、顿号、竖线都可分隔，多个关键字之间是「或」。
+ * 用来把同一商户的不同叫法（如「美团」「三快科技」）合在一起统计。
+ */
+export function parseKeywords(input: string): string[] {
+  const words = input
+    .toLowerCase()
+    .split(/[\s,，、|｜;；]+/)
+    .map((w) => w.trim())
+    .filter(Boolean)
+  return [...new Set(words)]
+}
+
+/** 商户或备注包含任一关键字（不区分大小写）；没有关键字时都算匹配 */
+export function matchKeywords(t: Transaction, keywords: string[]): boolean {
+  if (keywords.length === 0) return true
+  const texts = [t.merchant, t.note].filter((s): s is string => !!s).map((s) => s.toLowerCase())
+  return keywords.some((k) => texts.some((text) => text.includes(k)))
+}
+
+/** 合计视图中一个商户的收支 */
+export interface MerchantNet {
+  key: string
+  name: string
+  income: number
+  expense: number
+  /** 收入 - 支出 */
+  net: number
+  count: number
+}
+
+/** 按商户（没有时按备注）合并收入和支出，按收支总额从大到小；不含转账 */
+export function merchantNet(rows: Transaction[]): MerchantNet[] {
+  const groups = new Map<string, MerchantNet>()
+  for (const t of rows) {
+    if (t.type === 'transfer') continue
+    const name = merchantOf(t)
+    if (!name) continue
+    const group = groups.get(name) ?? { key: name, name, income: 0, expense: 0, net: 0, count: 0 }
+    group[t.type] += t.amount
+    group.net = group.income - group.expense
+    group.count++
+    groups.set(name, group)
+  }
+  return [...groups.values()].sort(
+    (a, b) => b.income + b.expense - (a.income + a.expense) || b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'),
+  )
+}
+
 /** 商户排行（按金额），取前 limit 个 */
 export function merchantTop(rows: Transaction[], type: CategoryType, limit = 5): ShareItem[] {
   const groups = new Map<string, { amount: number; count: number }>()
@@ -164,6 +223,10 @@ export interface Drill {
   /** null 表示「未分类」 */
   categoryId?: number | null
   merchant?: string
+  /** 跳到明细页时带上的搜索词（分析页关键字只有一个时） */
+  query?: string
+  /** 明细页复现不了这组筛选（如多个关键字），不提供跳转 */
+  noLink?: boolean
 }
 
 export function matchDrill(t: Transaction, drill: Drill): boolean {
@@ -176,10 +239,11 @@ export function matchDrill(t: Transaction, drill: Drill): boolean {
 }
 
 /** 明细页带筛选条件的链接，例如 #/transactions?month=2026-11&type=expense&category=1 */
-export function transactionsHref(month: string, drill: Pick<Drill, 'type' | 'categoryId' | 'merchant'>): string {
+export function transactionsHref(month: string, drill: Pick<Drill, 'type' | 'categoryId' | 'merchant' | 'query'>): string {
   const params = new URLSearchParams({ month })
   if (drill.type) params.set('type', drill.type)
   if (typeof drill.categoryId === 'number') params.set('category', String(drill.categoryId))
   if (drill.merchant) params.set('q', drill.merchant)
+  else if (drill.query) params.set('q', drill.query)
   return `#/transactions?${params}`
 }

@@ -5,9 +5,13 @@ import {
   changeRatio,
   formatAxisAmount,
   formatChange,
+  formatNet,
   matchDrill,
+  matchKeywords,
+  merchantNet,
   merchantTop,
   niceTicks,
+  parseKeywords,
   periodStats,
   transactionsHref,
   trendSeries,
@@ -186,5 +190,50 @@ describe('汇总与对比', () => {
     })
     expect(parseTransactionsHash('#/transactions')).toEqual({ filter: {} })
     expect(parseTransactionsHash('#/transactions?month=bad&type=x')).toEqual({ month: undefined, filter: {} })
+  })
+})
+
+describe('合计视图与关键字', () => {
+  const rows = [
+    tx({ type: 'expense', amount: 3000, merchant: '美团外卖' }),
+    tx({ type: 'expense', amount: 2000, merchant: '美团平台商户' }),
+    tx({ type: 'income', amount: 1500, merchant: '美团外卖', note: '退款' }),
+    tx({ type: 'expense', amount: 800, merchant: '北京三快科技有限公司' }),
+    tx({ type: 'income', amount: 50_000, merchant: '招商银行', note: '工资' }),
+    tx({ type: 'expense', amount: 600, note: 'Starbucks 拿铁' }),
+    tx({ type: 'transfer', amount: 9000, merchant: '美团外卖', transferAccountId: 2 }),
+  ]
+
+  it('关键字可用空格、逗号、顿号、竖线分隔，去重并转小写', () => {
+    expect(parseKeywords('  美团，三快 | 美团、STARBUCKS ')).toEqual(['美团', '三快', 'starbucks'])
+    expect(parseKeywords('   ')).toEqual([])
+  })
+
+  it('任一关键字命中商户或备注即匹配，不区分大小写', () => {
+    const keywords = parseKeywords('美团 三快')
+    expect(rows.filter((t) => matchKeywords(t, keywords)).map((t) => t.amount)).toEqual([3000, 2000, 1500, 800, 9000])
+    expect(rows.filter((t) => matchKeywords(t, ['starbucks']))).toHaveLength(1)
+    expect(rows.filter((t) => matchKeywords(t, []))).toHaveLength(rows.length)
+  })
+
+  it('商户收支合并收入与支出，按收支总额排序，转账不计', () => {
+    expect(merchantNet(rows).map((m) => [m.name, m.expense, m.income, m.net, m.count])).toEqual([
+      ['招商银行', 0, 50_000, 50_000, 1],
+      ['美团外卖', 3000, 1500, -1500, 2],
+      ['美团平台商户', 2000, 0, -2000, 1],
+      ['北京三快科技有限公司', 800, 0, -800, 1],
+      ['Starbucks 拿铁', 600, 0, -600, 1],
+    ])
+  })
+
+  it('净额带正负号', () => {
+    expect(formatNet(-150_000)).toBe('−¥1,500.00')
+    expect(formatNet(2000)).toBe('+¥20.00')
+    expect(formatNet(0)).toBe('¥0.00')
+  })
+
+  it('关键字只有一个时，明细页链接带上搜索词', () => {
+    expect(transactionsHref('2026-11', { query: '美团' })).toBe('#/transactions?month=2026-11&q=%E7%BE%8E%E5%9B%A2')
+    expect(transactionsHref('2026-11', { query: '美团', merchant: '美团外卖' })).toContain(encodeURIComponent('美团外卖'))
   })
 })
