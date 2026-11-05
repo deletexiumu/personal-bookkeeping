@@ -119,4 +119,5 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   医疗健康: '医疗',
   投资理财: '理财',
   收入: '其他收入',
+  退款: '其他收入',
 }

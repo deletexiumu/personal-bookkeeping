@@ -45,6 +45,7 @@ const ALIPAY_CSV = [
   '2026-10-30 10:00:00,日用百货,盒马,hema***@x.com,盒马鲜生,支出,128.50,招商银行储蓄卡(5678),交易成功,2026103022002\t,T002\t,,',
   '2026-10-29 09:00:00,投资理财,余额宝,,余额宝-收益发放,不计收支,1.23,余额宝,交易成功,2026102922003\t,,,',
   '2026-10-28 15:00:00,日用百货,淘宝商家,tb***@x.com,订单已取消,支出,59.00,花呗,交易关闭,2026102822004\t,T004\t,,',
+  '2026-10-27 18:00:00,退款,盒马,/,退款-盒马鲜生,不计收支,12.50,余额宝,退款成功,2026103022002*R005\t,R005\t,,',
 ].join('\r\n')
 
 /** 把字符串按 GBK 编码（仅测试用）：TextEncoder 只支持 UTF-8，这里由 GBK 解码表反查 */
@@ -161,7 +162,7 @@ describe('微信账单模板', () => {
 })
 
 describe('支付宝账单模板', () => {
-  it('GBK CSV 命中模板，交易分类按别名归类，交易关闭和不计收支默认忽略', () => {
+  it('GBK CSV 命中模板，交易分类按别名归类，交易关闭和不计收支默认忽略，退款记为收入', () => {
     const sniff = sniffText(gbk(ALIPAY_CSV))
     expect(sniff.format).toBe('gbk')
     expect(sniff.template?.id).toBe('alipay')
@@ -171,12 +172,16 @@ describe('支付宝账单模板', () => {
       ['盒马', 'expense', 12850, '2026103022002', undefined],
       ['余额宝', 'income', 123, '2026102922003', '不计收支'],
       ['淘宝商家', 'expense', 5900, '2026102822004', '交易关闭'],
+      ['盒马', 'income', 1250, '2026103022002*R005', undefined],
     ])
-    const items = buildPreview(rows, { categories, merchantHistory: new Map(), accounts, defaultAccountId: 3, existing: [] })
-    expect(items.map((i) => i.categoryId)).toEqual([1, 3, 10, 3])
-    expect(items.map((i) => i.categorySource)).toEqual(['file', 'file', 'file', 'file'])
+    const withOther: Category[] = [...categories, { id: 11, name: '其他收入', type: 'income' }]
+    const items = buildPreview(rows, { categories: withOther, merchantHistory: new Map(), accounts, defaultAccountId: 3, existing: [] })
+    expect(items.map((i) => i.categoryId)).toEqual([1, 3, 10, 3, 11])
+    expect(items.map((i) => i.categorySource)).toEqual(['file', 'file', 'file', 'file', 'file'])
     // 花呗、余额宝对应支付宝账户
-    expect(items.map((i) => i.accountId)).toEqual([3, 3, 3, 3])
+    expect(items.map((i) => i.accountId)).toEqual([3, 3, 3, 3, 3])
+    // 退款默认勾选
+    expect(items.map((i) => i.selected)).toEqual([true, true, false, false, true])
   })
 
   it('旧版交易记录明细按资金状态判断方向', () => {
