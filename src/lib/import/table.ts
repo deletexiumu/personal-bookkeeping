@@ -158,6 +158,9 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
       .filter((v) => v !== '' && v !== '/')
       .join(' · ')
 
+  const isRefund = (cells: string[]) =>
+    ['category', 'kind', 'note', 'status'].some((f) => /退款/.test(joined(cells, f as FieldKey)))
+
   for (const { line, cells } of table.rows) {
     const dt = parseDateCell(first(cells, 'date'))
     if (!dt) {
@@ -187,6 +190,11 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
           const negative = signed < 0
           type = negative === (amountSign === 'negative-expense') ? 'expense' : 'income'
           if (direction === 'neutral') skipReason = '不计收支'
+        }
+        // 支付宝把退款记为「不计收支」，按收入入账，否则原来那笔支出会一直多算
+        if (direction === 'neutral' && isRefund(cells)) {
+          type = 'income'
+          skipReason = undefined
         }
       }
     }
