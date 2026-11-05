@@ -1,23 +1,24 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { today } from '../../lib/date'
+import type { AnalysisView } from '../../lib/analysis'
 import { customPeriod, PERIOD_LABELS, periodLabel, periodOf, shiftPeriod, type Period, type PeriodKind } from '../../lib/period'
-import type { CategoryType } from '../../types'
 import { IconButton } from '../ui/Button'
 
 interface Props {
   period: Period
   onPeriodChange: (period: Period) => void
-  type: CategoryType
-  onTypeChange: (type: CategoryType) => void
+  type: AnalysisView
+  onTypeChange: (type: AnalysisView) => void
 }
 
 const KINDS: PeriodKind[] = ['week', 'month', 'year', 'custom']
-const TYPES: { value: CategoryType; label: string }[] = [
+const TYPES: { value: AnalysisView; label: string }[] = [
   { value: 'expense', label: '支出' },
   { value: 'income', label: '收入' },
+  { value: 'all', label: '合计' },
 ]
 
-/** 分析页唯一的筛选行：区间粒度、前后切换（或起止日期）、看支出还是收入 */
+/** 分析页的筛选行：区间粒度、前后切换（或起止日期）、看支出、收入还是收支合计 */
 export function PeriodBar({ period, onPeriodChange, type, onTypeChange }: Props) {
   function changeKind(kind: PeriodKind) {
     if (kind === period.kind) return
@@ -83,7 +84,7 @@ export function PeriodBar({ period, onPeriodChange, type, onTypeChange }: Props)
         </div>
       )}
 
-      <div className="segmented period-types" role="radiogroup" aria-label="构成与排行的方向">
+      <div className="segmented period-types" role="radiogroup" aria-label="构成与排行的口径">
         {TYPES.map((t) => (
           <button
             key={t.value}

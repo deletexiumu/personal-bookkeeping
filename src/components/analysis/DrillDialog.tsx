@@ -85,7 +85,7 @@ export function DrillDialog({ drill, rows, categories, accounts, lookup, onClose
             onDelete={(t) => void handleDelete(t)}
           />
         )}
-        {month && items.length > 0 && (
+        {month && items.length > 0 && !drill.noLink && (
           <a className="btn btn-secondary btn-md btn-block" href={transactionsHref(month, drill)}>
             <ExternalLink size={16} aria-hidden="true" />
             在明细页中筛选
