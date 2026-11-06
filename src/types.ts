@@ -48,8 +48,27 @@ export interface Transaction extends SyncMeta {
   importBatchId?: number
   /** 外部交易单号（账单导入），用于重复导入时精确去重 */
   externalId?: string
+  /**
+   * 合并进来的流水明细：钱包账单与银行流水（或手记）是同一笔钱时合并成这一条，
+   * 统计只算一次，这里保留银行流水那一侧的原始信息
+   */
+  merged?: MergedEntry[]
   createdAt: number
   updatedAt: number
+}
+
+/** 合并进一笔流水的另一条明细，只存展示用的文字，不存本地 ID（同步到其他设备时 ID 不通用） */
+export interface MergedEntry {
+  /** 来源说明，如「招商银行流水」「手记」 */
+  label: string
+  date: string
+  time?: string
+  merchant?: string
+  note?: string
+  /** 原来所在的账户名 */
+  account?: string
+  /** 这一行来自银行流水（用来识别重复导入，已经合并过银行流水的不再合并） */
+  bank?: boolean
 }
 
 /** 分类和账户图标的配色，对应 tokens.css 中的语义色 / 图表色 */
@@ -104,6 +123,8 @@ export interface ImportBatch extends SyncMeta {
   rowCount: number
   /** 实际入账条数 */
   importedCount: number
+  /** 与已有流水合并的条数（不新增记录） */
+  mergedCount?: number
   createdAt: number
   status: 'done' | 'reverted'
   revertedAt?: number

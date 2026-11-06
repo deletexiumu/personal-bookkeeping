@@ -36,7 +36,7 @@ export function RevertDialog({ batch, onClose, onReverted }: Props) {
     <Dialog open={batch !== null} title="撤销这次导入？" onClose={onClose}>
       <div className="form">
         <p className="t-body-m text-secondary">
-          将删除「{batch?.fileName}」导入的 {batch?.importedCount} 条流水，包括导入后修改过的。删除后不能恢复，可以重新导入。
+          将删除「{batch?.fileName}」导入的 {batch?.importedCount} 条流水，包括导入后修改过的，以及之后合并进这些流水的其他账单明细。删除后不能恢复，可以重新导入。
         </p>
         <div className="field-row">
           <Button onClick={onClose}>取消</Button>

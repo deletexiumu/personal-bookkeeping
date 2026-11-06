@@ -155,6 +155,10 @@ a {
   color: var(--semantic-warning);
 }
 
+.text-brand {
+  color: var(--brand-primary);
+}
+
 /* 流水金额，颜色跟随「设置 → 外观 → 金额颜色」 */
 .amount-income {
   color: var(--amount-income);

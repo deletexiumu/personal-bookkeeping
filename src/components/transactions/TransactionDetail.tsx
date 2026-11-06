@@ -227,6 +227,21 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
             <span className="tx-detail-ref t-caption text-tertiary">{t.externalId}</span>
           </div>
         )}
+        {t.merged && t.merged.length > 0 && (
+          <div className="field">
+            <span className="field-label">合并的流水</span>
+            <ul className="tx-detail-merged">
+              {t.merged.map((m, i) => (
+                <li key={i} className="t-caption text-secondary">
+                  <span className="text-tertiary">{m.label}</span> {m.date}
+                  {m.time && ` ${m.time}`}
+                  {m.account && ` · ${m.account}`}
+                  {[m.merchant, m.note].filter(Boolean).length > 0 && ` · ${[m.merchant, m.note].filter(Boolean).join(' / ')}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {error && (

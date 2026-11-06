@@ -44,6 +44,46 @@ describe('导入批次', () => {
     expect(await db.transactions.where('externalId').equals('R0').count()).toBe(1)
   })
 
+  it('能合并的行更新已有流水，不新增，并记合并条数', async () => {
+    await db.accounts.bulkPut([
+      { id: 2, name: '招行卡' },
+      { id: 3, name: '支付宝' },
+    ])
+    const walletId = await addTransaction(db, { type: 'expense', amount: 600, accountId: 3, date: '2026-10-31', merchant: '家和鲜包点', externalId: 'W1', categoryId: 1 })
+    const wallet = (await db.transactions.get(walletId))!
+    const bankRow: PreviewItem = {
+      key: 0,
+      row: { line: 2, date: '2026-10-31', type: 'expense', amount: 600, merchant: '家和鲜包点', note: '快捷支付' },
+      accountId: 2,
+      mergeWith: wallet,
+      selected: true,
+    }
+    const batchId = await commitImport(db, { source: 'bank', fileName: '招商银行交易流水.pdf', rowCount: 2, items: [bankRow, item(1)], sourceLabel: '招商银行流水' })
+    expect(await db.transactions.count()).toBe(2)
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 1, mergedCount: 1 })
+    const merged = (await db.transactions.get(walletId))!
+    expect(merged).toMatchObject({ accountId: 2, externalId: 'W1', categoryId: 1, dirty: 1 })
+    expect(merged.merged).toEqual([{ label: '招商银行流水', date: '2026-10-31', merchant: '家和鲜包点', note: '快捷支付', account: '招行卡', bank: true }])
+  })
+
+  it('预览之后已有那条在别处合并过时不再合并，照常新增', async () => {
+    const walletId = await addTransaction(db, { type: 'expense', amount: 600, accountId: 3, date: '2026-10-31', externalId: 'W1' })
+    const wallet = (await db.transactions.get(walletId))!
+    await db.transactions.update(walletId, { merged: [{ label: '中信银行流水', date: '2026-10-31', bank: true }] })
+    const bankRow: PreviewItem = { key: 0, row: { line: 2, date: '2026-10-31', type: 'expense', amount: 600, note: '快捷支付' }, accountId: 2, mergeWith: wallet, selected: true }
+    const batchId = await commitImport(db, { source: 'bank', fileName: 'b.pdf', rowCount: 1, items: [bankRow] })
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 1 })
+    expect((await db.transactions.get(walletId))!.merged).toHaveLength(1)
+  })
+
+  it('要合并的已有流水已被删除时照常新增', async () => {
+    const ghost = { id: 999, type: 'expense', amount: 600, accountId: 3, date: '2026-10-31', source: 'import', externalId: 'W1', createdAt: 1, updatedAt: 1 } as const
+    const bankRow: PreviewItem = { key: 0, row: { line: 2, date: '2026-10-31', type: 'expense', amount: 600, note: '快捷支付' }, accountId: 2, mergeWith: ghost, selected: true }
+    const batchId = await commitImport(db, { source: 'bank', fileName: 'b.pdf', rowCount: 1, items: [bankRow] })
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 1 })
+    expect(await db.transactions.count()).toBe(1)
+  })
+
   it('整批撤销删除该批次流水，不影响其他记录', async () => {
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-31' })
     const batchId = await commitImport(db, { source: 'csv', fileName: 'a.csv', rowCount: 2, items: [item(0), item(1)] })

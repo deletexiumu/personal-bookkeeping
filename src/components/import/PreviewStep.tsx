@@ -9,7 +9,7 @@ import type { Category } from '../../types'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
-type Filter = 'all' | 'pending' | 'duplicate' | 'income'
+type Filter = 'all' | 'pending' | 'merge' | 'duplicate' | 'income'
 
 const SOURCE_TEXT: Record<CategorySource, string> = {
   rule: '规则',
@@ -36,11 +36,22 @@ function shortDate(date: string) {
   return `${m}/${d}`
 }
 
+function describe(t: { date: string; source: string; merchant?: string; note?: string }): string {
+  const what = t.merchant ?? t.note
+  return `${shortDate(t.date)} ${t.source === 'import' ? '已导入的' : '手记的'}「${what ?? '无备注'}」`
+}
+
 function duplicateText(item: PreviewItem): string {
+  if (item.mergeWith) return `可能与 ${describe(item.mergeWith)}是同一笔，勾选后合并`
   const dup = item.duplicateOf
   if (dup === 'batch') return '与本文件中前面的行相同'
   if (!dup) return ''
   return `与 ${shortDate(dup.date)} ${dup.source === 'import' ? '已导入的' : '手记的'}一笔重复`
+}
+
+function mergeText(item: PreviewItem): string {
+  if (!item.mergeWith) return ''
+  return `与 ${describe(item.mergeWith)}是同一笔，${item.mergeAsTransfer ? '合并为本人账户间的转账' : '合并为一条'}`
 }
 
 /** 第 4 步：预览确认（M05）。可勾选、改分类；疑似重复和忽略的行默认不勾选。 */
@@ -54,6 +65,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
   const visible = items.filter((item) => {
     const status = statusOf(item)
     if (filter === 'pending') return status === 'duplicate' || status === 'uncategorized'
+    if (filter === 'merge') return status === 'merge'
     if (filter === 'duplicate') return status === 'duplicate'
     if (filter === 'income') return item.row.type === 'income'
     return true
@@ -80,6 +92,15 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
       }),
     )
   }
+  /** 合并候选改为单独入账，或改回合并 */
+  function toggleMerge(item: PreviewItem) {
+    if (item.mergeWith) {
+      const { mergeWith, weakMerge, mergeAsTransfer } = item
+      patch(item.key, { mergeWith: undefined, weakMerge: undefined, mergeAsTransfer: undefined, declinedMerge: { mergeWith, weakMerge, mergeAsTransfer }, selected: true })
+    } else if (item.declinedMerge) {
+      patch(item.key, { ...item.declinedMerge, declinedMerge: undefined, selected: true })
+    }
+  }
   const rememberCount = items.filter((i) => i.remember && i.selected).length
 
   const allVisibleSelected = visible.length > 0 && visible.every((i) => i.selected)
@@ -91,6 +112,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
   const FILTERS: [Filter, string, number][] = [
     ['all', '全部', items.length],
     ['pending', '待处理', pending],
+    ['merge', '合并', summary.merge],
     ['duplicate', '重复', summary.duplicate],
     ['income', '收入', income],
   ]
@@ -114,6 +136,10 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
         <div className="preview-kpi">
           <span className="t-num-l text-income">{summary.new}</span>
           <span className="t-caption text-secondary">新增</span>
+        </div>
+        <div className="preview-kpi">
+          <span className="t-num-l text-brand">{summary.merge}</span>
+          <span className="t-caption text-secondary">合并</span>
         </div>
         <div className="preview-kpi">
           <span className="t-num-l text-warning">{summary.duplicate}</span>
@@ -169,6 +195,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
               <div className="preview-main">
                 <div className="preview-title">
                   <span className="t-body-m">{title}</span>
+                  {status === 'merge' && <Badge tone="brand">合并</Badge>}
                   {status === 'duplicate' && <Badge tone="warning">疑似重复</Badge>}
                   {status === 'uncategorized' && <Badge tone="expense">待分类</Badge>}
                   {status === 'ignored' && <Badge>{row.skipReason}</Badge>}
@@ -188,10 +215,22 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {shortDate(row.date)}
                   {row.time && ` ${row.time}`}
                   {row.merchant && row.note && ` · ${row.note}`}
+                  {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
+                  {status !== 'ignored' && (item.mergeWith || item.declinedMerge) && (
+                    <>
+                      {' · '}
+                      <button type="button" className="link-button" onClick={() => toggleMerge(item)}>
+                        {item.mergeWith ? '不合并，单独入账' : '改回合并'}
+                      </button>
+                    </>
+                  )}
                 </span>
               </div>
               <span className="preview-category">
+              {item.mergeWith && (item.mergeAsTransfer || item.mergeWith.categoryId !== undefined) ? (
+                <span className="t-caption text-tertiary">{item.mergeAsTransfer ? '转账不分类' : '沿用已有分类'}</span>
+              ) : (
               <select
                 className="input"
                 aria-label={`「${title}」的分类`}
@@ -205,7 +244,8 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   </option>
                 ))}
               </select>
-              {item.categorySource === 'manual' && item.categoryId !== undefined && ruleFromRow(row, item.categoryId) && (
+              )}
+              {status !== 'merge' && item.categorySource === 'manual' && item.categoryId !== undefined && ruleFromRow(row, item.categoryId) && (
                 <label className="check-field preview-remember t-caption" title={`以后${row.merchant ? '商户' : '备注'}包含「${row.merchant ?? row.note}」时自动归为${category?.name}`}>
                   <input type="checkbox" checked={!!item.remember} onChange={(e) => setRemember(item, e.target.checked)} />
                   记住
@@ -225,6 +265,9 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
       <footer className="card preview-footer">
         <div>
           <p className="t-body-m-strong">已选 {summary.selected} 条</p>
+          {items.some((i) => i.selected && i.mergeWith) && (
+            <p className="t-caption text-tertiary">其中 {items.filter((i) => i.selected && i.mergeWith).length} 条与已有流水合并，不新增</p>
+          )}
           {summary.selectedUncategorized > 0 && (
             <p className="t-caption text-tertiary">{summary.selectedUncategorized} 条将以「未分类」入账</p>
           )}

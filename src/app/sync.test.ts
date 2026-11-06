@@ -95,6 +95,22 @@ describe('两台设备同步', () => {
     expect(await b.db.categories.where('name').equals('餐饮').count()).toBe(1)
   })
 
+  it('合并进来的流水明细（merged）和转账账户随记录同步', async () => {
+    const cloud = new FakeCloud()
+    const a = device(cloud)
+    await a.engine.sync()
+    const card = await a.db.accounts.add({ name: '招行卡', type: 'debit', initialBalance: 0, order: 9 })
+    const merged = [{ label: '招商银行流水', date: '2026-11-04', merchant: '支付宝', note: '网联收款', account: '招行卡', bank: true }]
+    await addTransaction(a.db, { type: 'transfer', amount: 500, accountId: 1, transferAccountId: card, date: '2026-11-04', externalId: 'W1', merged })
+    await a.engine.sync()
+
+    const b = device(cloud)
+    await b.engine.sync()
+    const [row] = await b.db.transactions.toArray()
+    expect(row.merged).toEqual(merged)
+    expect((await b.db.accounts.get(row.transferAccountId!))?.name).toBe('招行卡')
+  })
+
   it('修改、删除双向同步；同一条后改的为准', async () => {
     const cloud = new FakeCloud()
     const a = device(cloud)
