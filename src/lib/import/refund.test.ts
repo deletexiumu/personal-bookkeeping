@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Transaction } from '../../types'
+import { computeBalances } from '../balance'
 import { buildPreview, findDuplicate, statusOf, summarizePreview } from './preview'
 import { findRefundTarget, isRefundRow, originalAmount, type Purchase } from './refund'
 import type { ParsedRow } from './table'
@@ -81,5 +82,59 @@ describe('退款', () => {
     expect(originalAmount(t)).toBe(1998300)
     expect(findDuplicate(row({ type: 'expense', merchant: '机械革命京东自营旗舰店', note: '快捷支付' }), [t])).toBe(t)
     expect(findDuplicate(row({ date: '2026-04-22', amount: 100, merchant: '机械革命京东自营旗舰店', note: '快捷退款' }), [t])).toBe(t)
+  })
+
+  it('部分退款只按平台商户对上时不配对；全额退款可以', () => {
+    const purchases: Purchase[] = [{ accountId: 2, date: '2026-10-12', amount: 3000, merchant: '支付宝（中国）网络技术有限公司', note: '快捷支付' }]
+    const refund = (amount: number) => row({ date: '2026-10-13', amount, merchant: '支付宝（中国）网络技术有限公司', note: '快捷退款' })
+    expect(findRefundTarget(refund(1000), 2, purchases, new Set())).toBeUndefined()
+    expect(findRefundTarget(refund(3000), 2, purchases, new Set())).toBe(purchases[0])
+  })
+
+  it('预览：手记和已被合并认领的已有支出不作为原支出', () => {
+    const manual = tx({ source: 'manual' })
+    expect(buildPreview([row({ merchant: '机械革命京东自营旗舰店', note: '快捷退款' })], ctx([manual]))[0].refundOf).toBeUndefined()
+    // 同一份钱包账单里，付款行要合并进这条银行支出，退款行就不能再拿它当原支出
+    const bank = tx({ amount: 5000, merchant: '某店', note: '快捷支付' })
+    const items = buildPreview(
+      [
+        row({ amount: 5000, merchant: '某店', note: '退款', ref: 'F1' }),
+        row({ type: 'expense', amount: 5000, merchant: '某店', ref: 'P1', accountName: '招商银行(1234)' }),
+      ],
+      { ...ctx([bank]), accounts: [{ id: 2, name: '招行卡 1234', type: 'debit' as const }], source: 'alipay' as const },
+    )
+    expect(items[1].mergeWith).toBe(bank)
+    expect(items[0].refundOf?.tx).toBeUndefined()
+  })
+
+  it('预览：更早的支出从 purchases 里找', () => {
+    const old = tx({ id: 9, date: '2026-02-01' })
+    const items = buildPreview([row({ date: '2026-03-01', merchant: '机械革命京东自营旗舰店', note: '快捷退款' })], { ...ctx([]), purchases: [old] })
+    expect(items[0].refundOf).toMatchObject({ full: true, tx: { id: 9 } })
+  })
+
+  it('部分退款已并进原支出，另一个渠道的同一笔退款算重复', () => {
+    const t = tx({ amount: 45433, merged: [{ label: '支付宝账单', date: '2026-10-13', merchant: '小北租电动车', note: '退款-服务费', amount: 17457, ref: 'R1', refund: true }] })
+    const bankRefund = row({ date: '2026-10-13', amount: 17457, merchant: '支付宝（中国）网络技术有限公司', note: '快捷退款' })
+    expect(buildPreview([bankRefund], ctx([t]))[0].duplicateOf).toBe(t)
+  })
+
+  it('全额退款的一对：来源不同（一条有交易单号、一条没有）余额照样抵消', () => {
+    const buy = tx({ id: 1, amount: 5000, excluded: true, merged: [{ label: '支付宝账单', date: '2026-04-21', amount: 5000, refund: true, ref: 'F1' }] })
+    const refund = tx({ id: 2, type: 'income', amount: 5000, externalId: 'F1', excluded: true, merged: [{ label: '招商银行流水', date: '2026-04-21', amount: 5000, purchase: true }] })
+    expect(computeBalances([{ id: 2, name: '招行卡', initialBalance: 0 }], [buy, refund]).get(2)).toBe(0)
+  })
+
+  it('部分退款后换格式重新导入原支出：按原金额认出重复', () => {
+    const t = tx({
+      amount: 1998200,
+      merged: [
+        { label: '招商银行流水', date: '2026-04-21', merchant: '机械革命京东自营旗舰店', note: '快捷支付', bank: true },
+        { label: '招商银行流水', date: '2026-04-22', amount: 100, refund: true },
+      ],
+      externalId: 'P1',
+    })
+    const excel = row({ type: 'expense', date: '2026-04-22', merchant: '机械革命京东自营旗舰店', note: '银联快捷支付' })
+    expect(buildPreview([excel], ctx([t]))[0].duplicateOf).toBe(t)
   })
 })

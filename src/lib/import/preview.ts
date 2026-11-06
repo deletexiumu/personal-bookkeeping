@@ -84,11 +84,20 @@ function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number
   if (row.ref || !hasBankEntry(t) || (t.type !== 'transfer' && t.type !== row.type)) return false
   if (t.accountId !== accountId && t.transferAccountId !== accountId) return false
   return t.merged!.some((m) => {
-    if (!m.bank || (m.amount ?? t.amount) !== row.amount || dayDiff(m.date, row.date) > maxDiff) return false
+    if (!m.bank || (m.amount ?? originalAmount(t)) !== row.amount || dayDiff(m.date, row.date) > maxDiff) return false
     if (!normalizeText(row.merchant) && !normalizeText(row.note)) return true
     if (row.merchant && m.merchant) return similarity(companyText(row.merchant), companyText(m.merchant)) >= 0.4
     return similarity(row.merchant ?? row.note, m.merchant ?? m.note) >= 0.5
   })
+}
+
+/**
+ * 部分退款已并进原支出（退款那条没有单独入账），另一个渠道的账单里又有这笔退款（如支付宝退款和银行快捷退款）：
+ * 同一个账户、金额相同、日期相差不超过 1 天，一方有交易单号、一方没有
+ */
+function refundEntryContains(t: Transaction, row: ParsedRow, accountId: number): boolean {
+  if (row.type !== 'income' || t.accountId !== accountId) return false
+  return !!t.merged?.some((m) => m.refund && m.amount === row.amount && !m.ref !== !row.ref && dayDiff(m.date, row.date) <= 1)
 }
 
 /**
@@ -544,8 +553,10 @@ export function matchAccount(name: string | undefined, accounts: Account[], fall
 export interface PreviewContext extends ClassifyContext, MergeContext {
   accounts: Account[]
   defaultAccountId: number
-  /** 日期范围内（前后各多 1 天）的已有流水，用于去重 */
+  /** 日期范围内（前后各多 2 天）的已有流水，用于去重、合并和转账配对 */
   existing: Transaction[]
+  /** 退款可能对应的更早的支出（退款之前 120 天内），只用于退款配对 */
+  purchases?: Transaction[]
 }
 
 /** 钱包来源对应的账户类型 */
@@ -597,6 +608,15 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       }
     }
   }
+  // 部分退款已并进原支出，另一个渠道的账单里又有这笔退款：算重复
+  for (const item of items) {
+    if (item.duplicateOf || item.row.skipReason) continue
+    const dup = ctx.existing.find((t) => !claimed.has(t) && refundEntryContains(t, item.row, item.accountId))
+    if (dup) {
+      item.duplicateOf = dup
+      claimed.add(dup)
+    }
+  }
   // 本人账户间挪钱：与另一边已入账的不计收支流水合并成转账
   for (const item of items) {
     if (item.duplicateOf) continue
@@ -622,9 +642,11 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     }
   }
   // 退款：对上原支出（已有流水，或本批次里的支出），按日期先后处理，部分退款依次从原支出里扣
+  // 手记不参与（免得改动手记的内容）；本批次里已被重复 / 合并认领的已有流水也不参与
+  const olderPurchases = (ctx.purchases ?? []).filter((t) => !ctx.existing.some((e) => e.id === t.id))
   const purchases: Purchase[] = [
-    ...ctx.existing
-      .filter((t) => t.type === 'expense' && !t.excluded && t.id !== undefined)
+    ...[...ctx.existing, ...olderPurchases]
+      .filter((t) => t.type === 'expense' && !t.excluded && t.source !== 'manual' && t.id !== undefined && !claimed.has(t))
       .map((t) => ({ tx: t, accountId: t.accountId, date: t.date, amount: t.amount, merchant: t.merchant, note: t.note })),
     ...items
       .filter((i) => !i.duplicateOf && !i.mergeWith && !i.row.skipReason && i.row.type === 'expense')

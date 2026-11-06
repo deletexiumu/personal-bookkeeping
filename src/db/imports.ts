@@ -1,23 +1,31 @@
 import { shiftDate } from '../lib/date'
 import { flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
-import { purchaseEntry, refundEntry } from '../lib/import/refund'
-import type { ImportBatch, ImportSource, Transaction } from '../types'
+import { purchaseEntry, REFUND_WINDOW_DAYS, refundEntry } from '../lib/import/refund'
+import type { ImportBatch, ImportSource, MergedEntry, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
 
-/**
- * 去重候选：日期范围前后各多 2 天的已有流水（本人账户间转账两边最多差 2 天），加上单号相同的流水。
- * 有退款时 lookbackDays 传退款窗口，往前多取，找得到原支出。
- */
-export async function loadDedupeCandidates(db: BookkeepingDB, dates: string[], refs: string[], lookbackDays = 2): Promise<Transaction[]> {
+/** 去重候选：日期范围前后各多 2 天的已有流水（本人账户间转账两边最多差 2 天），加上单号相同的流水 */
+export async function loadDedupeCandidates(db: BookkeepingDB, dates: string[], refs: string[]): Promise<Transaction[]> {
   if (dates.length === 0) return []
   const sorted = [...dates].sort()
   const inRange = await db.transactions
     .where('date')
-    .between(shiftDate(sorted[0], -Math.max(2, lookbackDays)), shiftDate(sorted.at(-1)!, 2), true, true)
+    .between(shiftDate(sorted[0], -2), shiftDate(sorted.at(-1)!, 2), true, true)
     .toArray()
   const byRef = refs.length > 0 ? await db.transactions.where('externalId').anyOf(refs).toArray() : []
   const seen = new Set(inRange.map((t) => t.id))
   return [...inRange, ...byRef.filter((t) => !seen.has(t.id))]
+}
+
+/** 退款可能对应的原支出：最早一笔退款之前 120 天到最晚一笔退款之间的支出 */
+export async function loadRefundPurchases(db: BookkeepingDB, refundDates: string[]): Promise<Transaction[]> {
+  if (refundDates.length === 0) return []
+  const sorted = [...refundDates].sort()
+  return db.transactions
+    .where('date')
+    .between(shiftDate(sorted[0], -REFUND_WINDOW_DAYS), sorted.at(-1)!, true, true)
+    .filter((t) => t.type === 'expense')
+    .toArray()
 }
 
 /** 有商户的流水，用于「历史同商户」自动分类 */
@@ -78,51 +86,24 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     const label = input.sourceLabel ?? input.fileName
     const drafts: Draft[] = []
     const draftOf = new Map<number, Draft>()
-    const merges: Transaction[] = []
     const fees: Draft[] = []
     let mergedRows = 0
     const chosenKeys = new Set(chosen.map((i) => i.key))
-    /** 本批次里的原支出（按序号）→ 退它的行 */
-    const batchRefunds = new Map<number, PreviewItem[]>()
     const insert = (item: PreviewItem, patch: Partial<Draft> = {}) => {
-      const draft = { ...toTransaction(item), ...patch }
+      const draft: Draft = { ...toTransaction(item), ...patch }
+      if (draft.categoryId === undefined) delete draft.categoryId
       drafts.push(draft)
       draftOf.set(item.key, draft)
     }
+    /** 本次要改的已有流水：同一条可能先被合并、又被退款，后一步要在前一步的结果上改 */
+    const pending = new Map<number, Transaction>()
+    const load = async (id: number | undefined) => (id === undefined ? undefined : (pending.get(id) ?? (await db.transactions.get(id))))
+    const save = (t: Transaction) => pending.set(t.id!, { ...t, updatedAt: now })
+    // 退款放到最后、按日期先后处理：原支出可能是本批次里的行，或刚被合并过的已有流水
+    const refunds = chosen.filter((i) => i.refundOf).sort((a, b) => a.row.date.localeCompare(b.row.date))
     for (const item of chosen) {
-      const refund = item.refundOf
-      if (refund?.tx?.id !== undefined) {
-        const current = await db.transactions.get(refund.tx.id)
-        const fits =
-          !!current && current.type === 'expense' && !current.excluded && (refund.full ? current.amount === item.row.amount : current.amount > item.row.amount)
-        if (!current || !fits) {
-          insert(item)
-          continue
-        }
-        const entry = refundEntry(item.row, label, accountNames.get(item.accountId))
-        if (refund.full) {
-          merges.push({ ...current, excluded: true, merged: [...(current.merged ?? []), entry], updatedAt: now })
-          const from = purchaseEntry({ ...current, ref: current.externalId }, sourceLabelOf(current, await batchOf(current.importBatchId)))
-          insert(item, { excluded: true, merged: [from] })
-        } else {
-          merges.push({ ...current, amount: current.amount - item.row.amount, merged: [...(current.merged ?? []), entry], updatedAt: now })
-          mergedRows++
-        }
-        continue
-      }
-      if (refund?.key !== undefined) {
-        if (!chosenKeys.has(refund.key)) {
-          insert(item)
-          continue
-        }
-        batchRefunds.set(refund.key, [...(batchRefunds.get(refund.key) ?? []), item])
-        if (refund.full) {
-          const p = refund.purchase
-          insert(item, { excluded: true, merged: [purchaseEntry({ ...p, ref: input.items.find((i) => i.key === p.key)?.row.ref }, label)] })
-        } else mergedRows++
-        continue
-      }
-      const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
+      if (item.refundOf) continue
+      const current = await load(item.mergeWith?.id)
       const currentSource = (await batchOf(current?.importBatchId))?.source
       // 预览之后已有那条被删了，或在别处已经合并过：照常新增
       if (!current || !stillMergeable(current, item, input.source, () => currentSource)) {
@@ -134,7 +115,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         existing: sourceLabelOf(current, await batchOf(current.importBatchId)),
         accountName: (id) => accountNames.get(id),
       })
-      merges.push({ ...merged, updatedAt: now })
+      save(merged)
       mergedRows++
       // 提现扣的手续费：转账按到账金额记，差额记一笔支出
       if (item.transferPair) {
@@ -144,16 +125,42 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         if (fee) fees.push({ type: 'expense', amount: fee, accountId: merged.accountId, date: merged.date, time: merged.time, note: '提现手续费', source: 'import' })
       }
     }
-    // 本批次里先买后退：全额退款时原支出标为不计收支；部分退款从原支出里扣
-    for (const [key, refunds] of batchRefunds) {
-      const draft = draftOf.get(key)
-      if (!draft) continue
-      for (const r of refunds) {
-        draft.merged = [...(draft.merged ?? []), refundEntry(r.row, label, accountNames.get(r.accountId))]
-        if (r.refundOf!.full) draft.excluded = true
-        else draft.amount -= r.row.amount
+    // 退款：按原支出现在的金额决定全额还是部分；原支出不在了、已不计收支或金额不够时，退款按普通收入写入
+    for (const item of refunds) {
+      const target = item.refundOf!
+      const entry = refundEntry(item.row, label, accountNames.get(item.accountId))
+      const asExcludedRefund = (from: MergedEntry): Partial<Draft> => ({ excluded: true, categoryId: undefined, merged: [from] })
+      if (target.key !== undefined) {
+        const draft = chosenKeys.has(target.key) ? draftOf.get(target.key) : undefined
+        if (!draft || draft.excluded || draft.type !== 'expense' || draft.amount < item.row.amount) {
+          insert(item)
+          continue
+        }
+        draft.merged = [...(draft.merged ?? []), entry]
+        if (draft.amount === item.row.amount) {
+          draft.excluded = true
+          insert(item, asExcludedRefund(purchaseEntry({ ...draft, ref: draft.externalId }, label)))
+        } else {
+          draft.amount -= item.row.amount
+          mergedRows++
+        }
+        continue
+      }
+      const current = await load(target.tx?.id)
+      if (!current || current.type !== 'expense' || current.excluded || current.amount < item.row.amount) {
+        insert(item)
+        continue
+      }
+      if (current.amount === item.row.amount) {
+        save({ ...current, excluded: true, merged: [...(current.merged ?? []), entry] })
+        const from = purchaseEntry({ ...current, ref: current.externalId }, sourceLabelOf(current, await batchOf(current.importBatchId)))
+        insert(item, asExcludedRefund(from))
+      } else {
+        save({ ...current, amount: current.amount - item.row.amount, merged: [...(current.merged ?? []), entry] })
+        mergedRows++
       }
     }
+    const merges = [...pending.values()]
     const batchId = (await db.importBatches.add({
       source: input.source,
       fileName: input.fileName,
