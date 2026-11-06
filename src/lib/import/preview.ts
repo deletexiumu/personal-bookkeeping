@@ -74,10 +74,10 @@ function mergedComparable(t: Transaction, row: ParsedRow): boolean {
  * 同一份银行流水换了格式再导入（如先 PDF 后 Excel）：摘要、对手写法可能不同，记账日也可能差一天。
  * 同一张卡、日期相差不超过 1 天，并且对手相似（都有对手时比对手，否则比摘要），或这一行没有文字。
  */
-function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number): boolean {
+function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number, maxDiff: number): boolean {
   if (!mergedComparable(t, row) || (t.accountId !== accountId && t.transferAccountId !== accountId)) return false
   return t.merged!.some((m) => {
-    if (!m.bank || dayDiff(m.date, row.date) > 1) return false
+    if (!m.bank || dayDiff(m.date, row.date) > maxDiff) return false
     if (!normalizeText(row.merchant) && !normalizeText(row.note)) return true
     if (row.merchant && m.merchant) return similarity(companyText(row.merchant), companyText(m.merchant)) >= 0.4
     return similarity(row.merchant ?? row.note, m.merchant ?? m.note) >= 0.5
@@ -470,13 +470,17 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     if (bk) seen.add(bk)
     return item
   })
-  // 换格式重新导入已合并的银行流水：等整份文件的精确重复都认领完再找，免得抢走精确对得上的那条
-  for (const item of items) {
-    if (item.duplicateOf || item.row.ref) continue
-    const dup = ctx.existing.find((t) => !claimed.has(t) && mergedLooselyContains(t, item.row, item.accountId))
-    if (dup) {
-      item.duplicateOf = dup
-      claimed.add(dup)
+  // 换格式重新导入已合并的银行流水：等整份文件的精确重复都认领完再找，先找同一天的，再找差一天的；
+  // 差一天时，这一行若有对得上的合并对象，留给合并
+  for (const maxDiff of [0, 1]) {
+    for (const item of items) {
+      if (item.duplicateOf || item.row.ref) continue
+      if (maxDiff > 0 && findMergeTarget(item.row, ctx.existing, item.accountId, mergeCtx, claimed, true)) continue
+      const dup = ctx.existing.find((t) => !claimed.has(t) && mergedLooselyContains(t, item.row, item.accountId, maxDiff))
+      if (dup) {
+        item.duplicateOf = dup
+        claimed.add(dup)
+      }
     }
   }
   const open = items.filter((i) => !i.duplicateOf && !i.row.skipReason)

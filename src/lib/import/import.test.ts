@@ -432,6 +432,23 @@ describe('钱包账单与银行流水合并', () => {
       ctx([t]),
     )
     expect(again.map((i) => i.duplicateOf)).toEqual([undefined, t])
+    // 换格式再导入：同一天的那行先认领，次日的新一笔照常入账
+    const metro = walletTx({ id: 1, amount: 300, accountId: 2, merged: [{ label: '招商银行流水', date: '2026-10-31', merchant: '上海地铁', note: '快捷支付', bank: true }] })
+    const reformatted = buildPreview(
+      [
+        row({ amount: 300, date: '2026-11-01', merchant: '上海地铁', note: '快捷支付' }),
+        row({ amount: 300, date: '2026-10-31', merchant: '上海地铁运营有限公司', note: '银联快捷支付' }),
+      ],
+      ctx([metro]),
+    )
+    expect(reformatted.map((i) => i.duplicateOf)).toEqual([undefined, metro])
+  })
+
+  it('预览：次日的银行流水有对得上的钱包流水时合并，不当成前一天已合并流水的重复', () => {
+    const merged = walletTx({ id: 2, accountId: 2, merchant: '星巴克', merged: [{ label: '招商银行流水', date: '2026-10-31', merchant: '星巴克', note: '快捷支付', bank: true }] })
+    const wallet = walletTx({ id: 3, merchant: '星巴克', externalId: 'W3', date: '2026-11-01' })
+    const items = buildPreview([row({ date: '2026-11-01', merchant: '星巴克', note: '快捷支付' })], ctx([merged, wallet]))
+    expect(view(items)).toEqual([['merge', 3, true]])
   })
 
   it('钱包 × 手记合并后，银行流水还能再合并进来', () => {
