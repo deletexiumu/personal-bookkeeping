@@ -185,4 +185,38 @@ describe('退款', () => {
     expect(items[0].duplicateOf).toBe(p)
     expect(items[1].refundOf).toMatchObject({ full: true, tx: { id: 100 } })
   })
+
+  it('先部分退款、再退完剩下的，另一个渠道的那笔部分退款也算重复', () => {
+    const t = tx({
+      amount: 7000,
+      excluded: true,
+      externalId: 'P1',
+      merged: [
+        { label: '支付宝账单', date: '2026-10-11', amount: 3000, ref: 'R1', refund: true },
+        { label: '支付宝账单', date: '2026-10-12', amount: 7000, ref: 'R2', refund: true, full: true },
+      ],
+    })
+    const items = buildPreview(
+      [row({ date: '2026-10-11', amount: 3000, note: '快捷退款' }), row({ date: '2026-10-12', amount: 7000, note: '快捷退款' })],
+      ctx([{ ...t, date: '2026-10-10' }]),
+    )
+    expect(items[0]).toMatchObject({ duplicateOf: { id: 100 }, refundDuplicate: true })
+    // 退完剩余的那笔有自己的记录，不在这里认领
+    expect(items[1].refundDuplicate).toBeUndefined()
+  })
+
+  it('同一份银行流水换格式再导入：已并进原支出的部分退款算重复，不再扣一次', () => {
+    const t = tx({
+      amount: 45433,
+      merchant: '小北租电动车',
+      merged: [{ label: '招商银行流水', date: '2026-10-13', merchant: '小北租电动车', note: '快捷退款', amount: 17457, refund: true }],
+    })
+    const excel = row({ date: '2026-10-14', amount: 17457, merchant: '小北租电动车有限公司', note: '银联退款' })
+    const items = buildPreview([excel], { ...ctx([]), purchases: [{ ...t, date: '2026-10-10' }] })
+    expect(items[0]).toMatchObject({ refundDuplicate: true, duplicateOf: { id: 100 } })
+    expect(items[0].refundOf).toBeUndefined()
+    // 文字对不上的另一笔同金额退款不算
+    const other = buildPreview([row({ date: '2026-10-13', amount: 17457, merchant: '某超市', note: '退款' })], { ...ctx([]), purchases: [{ ...t, date: '2026-10-10' }] })
+    expect(other[0].refundDuplicate).toBeUndefined()
+  })
 })

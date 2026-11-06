@@ -30,6 +30,8 @@ export interface PreviewItem {
   mergeAsTransfer?: { from: number; to: number }
   /** 本人账户间挪钱的另一边：这一行（不计收支）与已有那条（不计收支）合并成一笔转账 */
   transferPair?: boolean
+  /** duplicateOf 是部分退款已并进去的原支出（这一行是那笔退款） */
+  refundDuplicate?: boolean
   /** 这一行是退款，对上了原支出（已有流水或本批次前面的行） */
   refundOf?: RefundTarget & { purchase: Purchase }
   /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
@@ -92,13 +94,21 @@ function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number
 }
 
 /**
- * 部分退款已并进原支出（退款那条没有单独入账），另一个渠道的账单里又有这笔退款（如支付宝退款和银行快捷退款）：
- * 同一个账户、金额相同、日期相差不超过 1 天，一方有交易单号、一方没有。返回对上的明细序号。
- * 原支出已不计收支（全额退完）时，退款有自己的记录，交给合并处理。
+ * 部分退款已并进原支出（退款那条没有单独入账），这一行是同一笔退款：同一个账户、金额相同、日期相差不超过 1 天，并且
+ * - 一方有交易单号、一方没有（另一个渠道的账单，如支付宝退款和银行快捷退款）；或
+ * - 双方都没有，文字相近（同一份银行流水换了格式再导入）。
+ * 退完剩余的那笔（full）有自己的记录，交给合并处理。返回对上的明细序号。
  */
 function refundEntryIndex(t: Transaction, row: ParsedRow, accountId: number): number {
-  if (!isRefundRow(row) || t.accountId !== accountId || t.excluded || !t.merged) return -1
-  return t.merged.findIndex((m) => m.refund && m.amount === row.amount && !m.ref !== !row.ref && dayDiff(m.date, row.date) <= 1)
+  if (!isRefundRow(row) || t.accountId !== accountId || !t.merged) return -1
+  return t.merged.findIndex((m) => {
+    if (!m.refund || m.full || m.amount !== row.amount || dayDiff(m.date, row.date) > 1) return false
+    if (!m.ref !== !row.ref) return true
+    if (m.ref || row.ref) return false
+    if (!normalizeText(row.merchant) && !normalizeText(row.note)) return true
+    if (row.merchant && m.merchant) return similarity(companyText(row.merchant), companyText(m.merchant)) >= 0.4
+    return similarity(row.merchant ?? row.note, m.merchant ?? m.note) >= 0.5
+  })
 }
 
 /**
@@ -621,6 +631,7 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       const index = refundEntryIndex(t, item.row, item.accountId)
       if (index < 0 || claimedEntries.has(`${t.id}:${index}`)) continue
       item.duplicateOf = t
+      item.refundDuplicate = true
       claimedEntries.add(`${t.id}:${index}`)
       break
     }
