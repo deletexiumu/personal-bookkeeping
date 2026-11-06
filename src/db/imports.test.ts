@@ -108,6 +108,96 @@ describe('导入批次', () => {
     expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 0, mergedCount: 1 })
   })
 
+  it('退款对上已有原支出：全额时两条都不计收支，部分时从原支出里扣', async () => {
+    await db.accounts.bulkPut([{ id: 2, name: '招行卡', type: 'debit' }])
+    const buyId = await addTransaction(db, { type: 'expense', amount: 1998300, accountId: 2, date: '2026-04-21', merchant: '机械革命', note: '快捷支付' })
+    const buy = (await db.transactions.get(buyId))!
+    const refundRow = (amount: number): PreviewItem['row'] => ({ line: 2, date: '2026-04-21', type: 'income', amount, merchant: '机械革命', note: '快捷退款' })
+    const purchase = { tx: buy, accountId: 2, date: buy.date, amount: buy.amount, merchant: buy.merchant, note: buy.note }
+    const full: PreviewItem = { key: 0, row: refundRow(1998300), accountId: 2, refundOf: { tx: buy, full: true, purchase }, selected: true }
+    const batchId = await commitImport(db, { source: 'bank', fileName: 'cmb.pdf', rowCount: 1, items: [full], sourceLabel: '招商银行流水' })
+    const after = (await db.transactions.get(buyId))!
+    expect(after).toMatchObject({ excluded: true, amount: 1998300 })
+    expect(after.merged).toMatchObject([{ refund: true, amount: 1998300, note: '快捷退款' }])
+    const [inserted] = await db.transactions.where('importBatchId').equals(batchId).toArray()
+    expect(inserted).toMatchObject({ type: 'income', excluded: true, merged: [{ amount: 1998300, note: '快捷支付' }] })
+
+    // 部分退款：原支出已不计收支（全额退过）时不再扣，按普通收入写入
+    const again: PreviewItem = { key: 0, row: refundRow(100), accountId: 2, refundOf: { tx: buy, full: false, purchase }, selected: true }
+    const b2 = await commitImport(db, { source: 'bank', fileName: 'cmb.pdf', rowCount: 1, items: [again] })
+    expect(await db.importBatches.get(b2)).toMatchObject({ importedCount: 1 })
+    expect((await db.transactions.get(buyId))!.amount).toBe(1998300)
+  })
+
+  it('部分退款并进已有原支出，不新增记录', async () => {
+    const buyId = await addTransaction(db, { type: 'expense', amount: 62890, accountId: 3, date: '2026-10-10', merchant: '小北租电动车' })
+    const buy = (await db.transactions.get(buyId))!
+    const purchase = { tx: buy, accountId: 3, date: buy.date, amount: buy.amount, merchant: buy.merchant }
+    const item: PreviewItem = { key: 0, row: { line: 2, date: '2026-10-13', type: 'income', amount: 17457, merchant: '小北租电动车', note: '退款-服务费', ref: 'R1' }, accountId: 3, refundOf: { tx: buy, full: false, purchase }, selected: true }
+    const batchId = await commitImport(db, { source: 'alipay', fileName: 'a.csv', rowCount: 1, items: [item], sourceLabel: '支付宝账单' })
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 0, mergedCount: 1 })
+    expect(await db.transactions.get(buyId)).toMatchObject({ amount: 45433, merged: [{ refund: true, amount: 17457, ref: 'R1', label: '支付宝账单' }] })
+  })
+
+  it('同一份账单里先买后退：全额时两条都不计收支，部分时原支出减掉退款', async () => {
+    const buy = (key: number, amount: number): PreviewItem => ({ key, row: { line: key + 2, date: '2026-10-10', type: 'expense', amount, merchant: `店${key}`, ref: `B${key}` }, accountId: 3, selected: true })
+    const p = (key: number, amount: number) => ({ key, accountId: 3, date: '2026-10-10', amount, merchant: `店${key}` })
+    const items: PreviewItem[] = [
+      buy(0, 1000),
+      buy(1, 5000),
+      { key: 2, row: { line: 4, date: '2026-10-11', type: 'income', amount: 1000, merchant: '店0', note: '退款', ref: 'F0' }, accountId: 3, refundOf: { key: 0, full: true, purchase: p(0, 1000) }, selected: true },
+      { key: 3, row: { line: 5, date: '2026-10-11', type: 'income', amount: 1200, merchant: '店1', note: '退款', ref: 'F1' }, accountId: 3, refundOf: { key: 1, full: false, purchase: p(1, 5000) }, selected: true },
+    ]
+    const batchId = await commitImport(db, { source: 'alipay', fileName: 'a.csv', rowCount: 4, items, sourceLabel: '支付宝账单' })
+    const rows = await db.transactions.where('importBatchId').equals(batchId).toArray()
+    const byRef = new Map(rows.map((r) => [r.externalId, r]))
+    expect(rows).toHaveLength(3)
+    expect(byRef.get('B0')).toMatchObject({ excluded: true, amount: 1000, merged: [{ refund: true, ref: 'F0' }] })
+    expect(byRef.get('F0')).toMatchObject({ excluded: true, type: 'income', merged: [{ ref: 'B0', amount: 1000 }] })
+    expect(byRef.get('B1')).toMatchObject({ amount: 3800, merged: [{ refund: true, ref: 'F1', amount: 1200 }] })
+    expect(byRef.get('B1')!.excluded).toBeUndefined()
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 3, mergedCount: 1 })
+  })
+
+  it('同一笔已有支出被多次退款：依次扣，最后一笔退完余额时两条都不计收支', async () => {
+    const buyId = await addTransaction(db, { type: 'expense', amount: 10000, accountId: 3, date: '2026-10-10', merchant: '小北租电动车' })
+    await db.transactions.update(buyId, { source: 'import' })
+    const buy = (await db.transactions.get(buyId))!
+    const purchase = { tx: buy, accountId: 3, date: buy.date, amount: buy.amount, merchant: buy.merchant }
+    const refund = (key: number, amount: number, date: string): PreviewItem => ({
+      key,
+      row: { line: key + 2, date, type: 'income', amount, merchant: '小北租电动车', note: '退款', ref: `R${key}` },
+      accountId: 3,
+      refundOf: { tx: buy, full: false, purchase },
+      selected: true,
+    })
+    // 预览时都算成部分退款；保存时按扣完前一笔后的金额判断，第三笔正好退完
+    const batchId = await commitImport(db, {
+      source: 'alipay',
+      fileName: 'a.csv',
+      rowCount: 3,
+      items: [refund(2, 3000, '2026-10-13'), refund(0, 2000, '2026-10-11'), refund(1, 5000, '2026-10-12')],
+    })
+    const after = (await db.transactions.get(buyId))!
+    expect(after.amount).toBe(3000)
+    expect(after.excluded).toBe(true)
+    expect(after.merged!.map((m) => m.ref)).toEqual(['R0', 'R1', 'R2'])
+    const inserted = await db.transactions.where('importBatchId').equals(batchId).toArray()
+    expect(inserted).toMatchObject([{ externalId: 'R2', excluded: true, merged: [{ purchase: true, amount: 3000 }] }])
+    expect(inserted[0].categoryId).toBeUndefined()
+  })
+
+  it('本批次的原支出没勾选时，退款按普通收入写入', async () => {
+    const items: PreviewItem[] = [
+      { key: 0, row: { line: 2, date: '2026-10-10', type: 'expense', amount: 1000, merchant: '店', ref: 'B0' }, accountId: 3, selected: false },
+      { key: 1, row: { line: 3, date: '2026-10-11', type: 'income', amount: 1000, merchant: '店', note: '退款', ref: 'F0' }, accountId: 3, refundOf: { key: 0, full: true, purchase: { key: 0, accountId: 3, date: '2026-10-10', amount: 1000 } }, selected: true },
+    ]
+    const batchId = await commitImport(db, { source: 'alipay', fileName: 'a.csv', rowCount: 2, items })
+    const rows = await db.transactions.where('importBatchId').equals(batchId).toArray()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].excluded).toBeUndefined()
+  })
+
   it('整批撤销删除该批次流水，不影响其他记录', async () => {
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-31' })
     const batchId = await commitImport(db, { source: 'csv', fileName: 'a.csv', rowCount: 2, items: [item(0), item(1)] })

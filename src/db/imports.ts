@@ -1,6 +1,7 @@
 import { shiftDate } from '../lib/date'
 import { flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
-import type { ImportBatch, ImportSource, Transaction } from '../types'
+import { purchaseEntry, REFUND_WINDOW_DAYS, refundEntry } from '../lib/import/refund'
+import type { ImportBatch, ImportSource, MergedEntry, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
 
 /** 去重候选：日期范围前后各多 2 天的已有流水（本人账户间转账两边最多差 2 天），加上单号相同的流水 */
@@ -14,6 +15,17 @@ export async function loadDedupeCandidates(db: BookkeepingDB, dates: string[], r
   const byRef = refs.length > 0 ? await db.transactions.where('externalId').anyOf(refs).toArray() : []
   const seen = new Set(inRange.map((t) => t.id))
   return [...inRange, ...byRef.filter((t) => !seen.has(t.id))]
+}
+
+/** 退款可能对应的原支出：最早一笔退款之前 120 天到最晚一笔退款之间的支出 */
+export async function loadRefundPurchases(db: BookkeepingDB, refundDates: string[]): Promise<Transaction[]> {
+  if (refundDates.length === 0) return []
+  const sorted = [...refundDates].sort()
+  return db.transactions
+    .where('date')
+    .between(shiftDate(sorted[0], -REFUND_WINDOW_DAYS), sorted.at(-1)!, true, true)
+    .filter((t) => t.type === 'expense')
+    .toArray()
 }
 
 /** 有商户的流水，用于「历史同商户」自动分类 */
@@ -43,6 +55,8 @@ export function sourceLabelOf(t: Transaction, batch: ImportBatch | undefined): s
 /**
  * 把勾选的预览行写入账本并记一条导入批次，返回批次 ID。
  * 能合并的行（mergeWith）不新增，而是更新已有那条（见 mergeTransaction）；已有那条被删了或已不能合并时照常新增。
+ * 退款（refundOf）：全额退款时退款照常写入，它和原支出都标为不计收支；部分退款不写入，原支出减掉退款金额，
+ * 退款记进原支出的明细。原支出已变（被删、金额不对）时退款按普通收入写入。
  * 写入前按交易单号再去重一次：账本里已有同单号的流水（例如预览之后在别处又导入了一份重叠的账单），
  * 或本次勾选里单号重复的行，都不再写入。
  */
@@ -68,23 +82,41 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
       if (!batchCache.has(id)) batchCache.set(id, await db.importBatches.get(id))
       return batchCache.get(id)
     }
-    const inserts: PreviewItem[] = []
-    const merges: Transaction[] = []
-    const fees: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'importBatchId'>[] = []
+    type Draft = Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'importBatchId'>
+    const label = input.sourceLabel ?? input.fileName
+    const drafts: Draft[] = []
+    const draftOf = new Map<number, Draft>()
+    const fees: Draft[] = []
+    let mergedRows = 0
+    const chosenKeys = new Set(chosen.map((i) => i.key))
+    const insert = (item: PreviewItem, patch: Partial<Draft> = {}) => {
+      const draft: Draft = { ...toTransaction(item), ...patch }
+      if (draft.categoryId === undefined) delete draft.categoryId
+      drafts.push(draft)
+      draftOf.set(item.key, draft)
+    }
+    /** 本次要改的已有流水：同一条可能先被合并、又被退款，后一步要在前一步的结果上改 */
+    const pending = new Map<number, Transaction>()
+    const load = async (id: number | undefined) => (id === undefined ? undefined : (pending.get(id) ?? (await db.transactions.get(id))))
+    const save = (t: Transaction) => pending.set(t.id!, { ...t, updatedAt: now })
+    // 退款放到最后、按日期先后处理：原支出可能是本批次里的行，或刚被合并过的已有流水
+    const refunds = chosen.filter((i) => i.refundOf).sort((a, b) => a.row.date.localeCompare(b.row.date))
     for (const item of chosen) {
-      const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
+      if (item.refundOf) continue
+      const current = await load(item.mergeWith?.id)
       const currentSource = (await batchOf(current?.importBatchId))?.source
       // 预览之后已有那条被删了，或在别处已经合并过：照常新增
       if (!current || !stillMergeable(current, item, input.source, () => currentSource)) {
-        inserts.push(item)
+        insert(item)
         continue
       }
       const merged = mergeTransaction(current, item, {
-        incoming: input.sourceLabel ?? input.fileName,
+        incoming: label,
         existing: sourceLabelOf(current, await batchOf(current.importBatchId)),
         accountName: (id) => accountNames.get(id),
       })
-      merges.push({ ...merged, updatedAt: now })
+      save(merged)
+      mergedRows++
       // 提现扣的手续费：转账按到账金额记，差额记一笔支出
       if (item.transferPair) {
         const rowOut = flowOf(item.row, !!item.row.ref) === 'expense'
@@ -93,18 +125,55 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         if (fee) fees.push({ type: 'expense', amount: fee, accountId: merged.accountId, date: merged.date, time: merged.time, note: '提现手续费', source: 'import' })
       }
     }
+    // 退款：按原支出现在的金额决定全额还是部分；原支出不在了、已不计收支或金额不够时，退款按普通收入写入
+    for (const item of refunds) {
+      const target = item.refundOf!
+      const entry = (full: boolean) => refundEntry(item.row, label, accountNames.get(item.accountId), full)
+      const asExcludedRefund = (from: MergedEntry): Partial<Draft> => ({ excluded: true, categoryId: undefined, merged: [from] })
+      if (target.key !== undefined) {
+        const draft = chosenKeys.has(target.key) ? draftOf.get(target.key) : undefined
+        if (!draft || draft.excluded || draft.type !== 'expense' || draft.amount < item.row.amount) {
+          insert(item)
+          continue
+        }
+        const full = draft.amount === item.row.amount
+        draft.merged = [...(draft.merged ?? []), entry(full)]
+        if (full) {
+          draft.excluded = true
+          insert(item, asExcludedRefund(purchaseEntry({ ...draft, ref: draft.externalId }, label)))
+        } else {
+          draft.amount -= item.row.amount
+          mergedRows++
+        }
+        continue
+      }
+      const current = await load(target.tx?.id)
+      if (!current || current.type !== 'expense' || current.excluded || current.amount < item.row.amount) {
+        insert(item)
+        continue
+      }
+      if (current.amount === item.row.amount) {
+        save({ ...current, excluded: true, merged: [...(current.merged ?? []), entry(true)] })
+        const from = purchaseEntry({ ...current, ref: current.externalId }, sourceLabelOf(current, await batchOf(current.importBatchId)))
+        insert(item, asExcludedRefund(from))
+      } else {
+        save({ ...current, amount: current.amount - item.row.amount, merged: [...(current.merged ?? []), entry(false)] })
+        mergedRows++
+      }
+    }
+    const merges = [...pending.values()]
     const batchId = (await db.importBatches.add({
       source: input.source,
       fileName: input.fileName,
       rowCount: input.rowCount,
-      importedCount: inserts.length,
-      ...(merges.length > 0 ? { mergedCount: merges.length } : {}),
+      importedCount: drafts.length,
+      ...(mergedRows > 0 ? { mergedCount: mergedRows } : {}),
       createdAt: now,
       status: 'done',
     })) as number
     await db.transactions.bulkAdd(
       // createdAt 递减，让同一时间的行在明细中保持文件里的先后顺序
-      [...inserts.map(toTransaction), ...fees].map((t, i) => ({ ...t, importBatchId: batchId, createdAt: now - i, updatedAt: now })),
+      [...drafts, ...fees].map((t, i) => ({ ...t, importBatchId: batchId, createdAt: now - i, updatedAt: now })),
     )
     if (merges.length > 0) await db.transactions.bulkPut(merges)
     return batchId

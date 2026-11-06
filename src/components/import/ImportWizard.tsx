@@ -3,11 +3,12 @@ import { ArrowLeft, CircleCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { hrefOf } from '../../app/router'
 import { db } from '../../db'
-import { commitImport, loadDedupeCandidates, loadMerchantTransactions } from '../../db/imports'
+import { commitImport, loadDedupeCandidates, loadMerchantTransactions, loadRefundPurchases } from '../../db/imports'
 import { listImportTemplates, listRules, saveImportTemplate, saveRule } from '../../db/rules'
 import { ruleFromRow } from '../../lib/import/rules'
 import type { FieldKey } from '../../lib/import/fields'
 import { accountByCardTail, buildMerchantHistory, buildPreview, type PreviewItem } from '../../lib/import/preview'
+import { isRefundRow } from '../../lib/import/refund'
 import { finishRows, headerSignature, sniffFile, suggestTemplateName, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
 import { parseRows, type AmountSign, type ColumnMapping } from '../../lib/import/table'
 import type { BuiltinTemplate } from '../../lib/import/templates'
@@ -161,6 +162,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
       const rows = finishRows(target, parseRows(target.table, columns, sign)).rows
       const refs = rows.flatMap((r) => (r.ref ? [r.ref] : []))
       const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
+      const purchases = await loadRefundPurchases(db, rows.filter(isRefundRow).map((r) => r.date))
       const batchSource = new Map((await db.importBatches.toArray()).map((b) => [b.id, b.source]))
       setItems(
         buildPreview(rows, {
@@ -170,6 +172,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
           accounts,
           defaultAccountId,
           existing,
+          purchases,
           source: target.template?.source ?? source,
           sourceOf: (t) => (t.importBatchId === undefined ? undefined : batchSource.get(t.importBatchId)),
         }),
@@ -300,7 +303,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
           )}
           <p className="t-body-s text-secondary">
             文件共 {batch.rowCount} 条，跳过 {batch.rowCount - batch.importedCount - (batch.mergedCount ?? 0)} 条。
-            {batch.mergedCount ? '合并的是钱包账单与银行流水里的同一笔，撤销本次导入不会拆开已合并的流水。' : ''}
+            {batch.mergedCount ? '合并的是其他账单里的同一笔或退款；撤销本次导入不会还原已合并、已抵消的流水。' : ''}
             可以随时在「导入记录」里整批撤销。
           </p>
           <div className="import-actions">
