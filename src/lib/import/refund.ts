@@ -17,14 +17,14 @@ export function isRefundPair(t: Pick<Transaction, 'merged'>): boolean {
   return !!t.merged?.some((m) => m.refund || m.purchase)
 }
 
-/** 合并进流水的退款金额之和 */
+/** 已从金额里扣掉的部分退款之和（退完剩余的那笔不扣金额，不算） */
 export function refundedAmount(t: Pick<Transaction, 'merged'>): number {
-  return (t.merged ?? []).reduce((sum, m) => sum + (m.refund ? (m.amount ?? 0) : 0), 0)
+  return (t.merged ?? []).reduce((sum, m) => sum + (m.refund && !m.full ? (m.amount ?? 0) : 0), 0)
 }
 
-/** 原金额：部分退款并进来之前的金额，用于重复导入时比对 */
-export function originalAmount(t: Pick<Transaction, 'amount' | 'merged' | 'excluded'>): number {
-  return t.amount + (t.excluded ? 0 : refundedAmount(t))
+/** 原金额：部分退款扣掉之前的金额，用于重复导入时比对 */
+export function originalAmount(t: Pick<Transaction, 'amount' | 'merged'>): number {
+  return t.amount + refundedAmount(t)
 }
 
 /** 去掉「退款-」前缀和公司名里的通用字，「退款-盒马鲜生(某店)」与「盒马鲜生(某店)」才比得上 */
@@ -92,8 +92,9 @@ export function findRefundTarget(
 }
 
 /** 退款这一行记进原支出的明细 */
-export function refundEntry(row: ParsedRow, label: string, account: string | undefined): MergedEntry {
+export function refundEntry(row: ParsedRow, label: string, account: string | undefined, full = false): MergedEntry {
   const entry: MergedEntry = { label, date: row.date, amount: row.amount, refund: true }
+  if (full) entry.full = true
   if (row.time) entry.time = row.time
   if (row.merchant) entry.merchant = row.merchant
   if (row.note) entry.note = row.note

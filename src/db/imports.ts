@@ -128,7 +128,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     // 退款：按原支出现在的金额决定全额还是部分；原支出不在了、已不计收支或金额不够时，退款按普通收入写入
     for (const item of refunds) {
       const target = item.refundOf!
-      const entry = refundEntry(item.row, label, accountNames.get(item.accountId))
+      const entry = (full: boolean) => refundEntry(item.row, label, accountNames.get(item.accountId), full)
       const asExcludedRefund = (from: MergedEntry): Partial<Draft> => ({ excluded: true, categoryId: undefined, merged: [from] })
       if (target.key !== undefined) {
         const draft = chosenKeys.has(target.key) ? draftOf.get(target.key) : undefined
@@ -136,8 +136,9 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
           insert(item)
           continue
         }
-        draft.merged = [...(draft.merged ?? []), entry]
-        if (draft.amount === item.row.amount) {
+        const full = draft.amount === item.row.amount
+        draft.merged = [...(draft.merged ?? []), entry(full)]
+        if (full) {
           draft.excluded = true
           insert(item, asExcludedRefund(purchaseEntry({ ...draft, ref: draft.externalId }, label)))
         } else {
@@ -152,11 +153,11 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         continue
       }
       if (current.amount === item.row.amount) {
-        save({ ...current, excluded: true, merged: [...(current.merged ?? []), entry] })
+        save({ ...current, excluded: true, merged: [...(current.merged ?? []), entry(true)] })
         const from = purchaseEntry({ ...current, ref: current.externalId }, sourceLabelOf(current, await batchOf(current.importBatchId)))
         insert(item, asExcludedRefund(from))
       } else {
-        save({ ...current, amount: current.amount - item.row.amount, merged: [...(current.merged ?? []), entry] })
+        save({ ...current, amount: current.amount - item.row.amount, merged: [...(current.merged ?? []), entry(false)] })
         mergedRows++
       }
     }

@@ -93,11 +93,12 @@ function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number
 
 /**
  * 部分退款已并进原支出（退款那条没有单独入账），另一个渠道的账单里又有这笔退款（如支付宝退款和银行快捷退款）：
- * 同一个账户、金额相同、日期相差不超过 1 天，一方有交易单号、一方没有
+ * 同一个账户、金额相同、日期相差不超过 1 天，一方有交易单号、一方没有。返回对上的明细序号。
+ * 原支出已不计收支（全额退完）时，退款有自己的记录，交给合并处理。
  */
-function refundEntryContains(t: Transaction, row: ParsedRow, accountId: number): boolean {
-  if (row.type !== 'income' || t.accountId !== accountId) return false
-  return !!t.merged?.some((m) => m.refund && m.amount === row.amount && !m.ref !== !row.ref && dayDiff(m.date, row.date) <= 1)
+function refundEntryIndex(t: Transaction, row: ParsedRow, accountId: number): number {
+  if (!isRefundRow(row) || t.accountId !== accountId || t.excluded || !t.merged) return -1
+  return t.merged.findIndex((m) => m.refund && m.amount === row.amount && !m.ref !== !row.ref && dayDiff(m.date, row.date) <= 1)
 }
 
 /**
@@ -608,15 +609,24 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       }
     }
   }
-  // 部分退款已并进原支出，另一个渠道的账单里又有这笔退款：算重复
+  // 部分退款已并进原支出，另一个渠道的账单里又有这笔退款：算重复。按明细逐条认领，不认领原支出本身，
+  // 同一份银行流水里的原支出那行还要合并进来
+  const purchaseIds = new Set(ctx.existing.map((t) => t.id))
+  const olderPurchases = (ctx.purchases ?? []).filter((t) => !purchaseIds.has(t.id))
+  const withOlder = [...ctx.existing, ...olderPurchases]
+  const claimedEntries = new Set<string>()
   for (const item of items) {
     if (item.duplicateOf || item.row.skipReason) continue
-    const dup = ctx.existing.find((t) => !claimed.has(t) && refundEntryContains(t, item.row, item.accountId))
-    if (dup) {
-      item.duplicateOf = dup
-      claimed.add(dup)
+    for (const t of withOlder) {
+      const index = refundEntryIndex(t, item.row, item.accountId)
+      if (index < 0 || claimedEntries.has(`${t.id}:${index}`)) continue
+      item.duplicateOf = t
+      claimedEntries.add(`${t.id}:${index}`)
+      break
     }
   }
+  /** 被合并、转账配对认领的已有流水：不再作为退款的原支出 */
+  const mergeTargets = new Set<Transaction>()
   // 本人账户间挪钱：与另一边已入账的不计收支流水合并成转账
   for (const item of items) {
     if (item.duplicateOf) continue
@@ -627,6 +637,7 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     item.mergeAsTransfer =
       flowOf(item.row, !!item.row.ref) === 'expense' ? { from: item.accountId, to: pair.accountId } : { from: pair.accountId, to: item.accountId }
     claimed.add(pair)
+    mergeTargets.add(pair)
   }
   const open = items.filter((i) => !i.duplicateOf && !i.row.skipReason)
   for (const strongOnly of [true, false]) {
@@ -639,14 +650,15 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       const transfer = transferOf(item.row, item.accountId, merge.tx, mergeCtx)
       if (transfer) item.mergeAsTransfer = transfer
       claimed.add(merge.tx)
+      mergeTargets.add(merge.tx)
     }
   }
   // 退款：对上原支出（已有流水，或本批次里的支出），按日期先后处理，部分退款依次从原支出里扣
-  // 手记不参与（免得改动手记的内容）；本批次里已被重复 / 合并认领的已有流水也不参与
-  const olderPurchases = (ctx.purchases ?? []).filter((t) => !ctx.existing.some((e) => e.id === t.id))
+  // 手记不参与（免得改动手记的内容）；本批次里被合并、转账配对认领的已有流水也不参与（重复认领的可以：
+  // 重新导出的账单里原支出那行算重复，退款仍要对上它）
   const purchases: Purchase[] = [
-    ...[...ctx.existing, ...olderPurchases]
-      .filter((t) => t.type === 'expense' && !t.excluded && t.source !== 'manual' && t.id !== undefined && !claimed.has(t))
+    ...withOlder
+      .filter((t) => t.type === 'expense' && !t.excluded && t.source !== 'manual' && t.id !== undefined && !mergeTargets.has(t))
       .map((t) => ({ tx: t, accountId: t.accountId, date: t.date, amount: t.amount, merchant: t.merchant, note: t.note })),
     ...items
       .filter((i) => !i.duplicateOf && !i.mergeWith && !i.row.skipReason && i.row.type === 'expense')

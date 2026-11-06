@@ -137,4 +137,52 @@ describe('退款', () => {
     const excel = row({ type: 'expense', date: '2026-04-22', merchant: '机械革命京东自营旗舰店', note: '银联快捷支付' })
     expect(buildPreview([excel], ctx([t]))[0].duplicateOf).toBe(t)
   })
+
+  it('先导入支付宝（含部分退款），再导入同时有原支出和退款的银行流水：原支出合并、退款算重复', () => {
+    const t = tx({
+      amount: 45433,
+      externalId: 'P1',
+      merchant: '小北租电动车',
+      note: '服务费',
+      merged: [{ label: '支付宝账单', date: '2026-10-13', merchant: '小北租电动车', note: '退款-服务费', amount: 17457, ref: 'R1', refund: true }],
+    })
+    const items = buildPreview(
+      [
+        row({ type: 'expense', date: '2026-10-10', amount: 62890, merchant: '支付宝（中国）网络技术有限公司', note: '快捷支付' }),
+        row({ date: '2026-10-13', amount: 17457, merchant: '支付宝（中国）网络技术有限公司', note: '快捷退款' }),
+      ],
+      { ...ctx([{ ...t, date: '2026-10-10' }]), sourceOf: () => 'alipay' as const },
+    )
+    expect(items[0].mergeWith?.id).toBe(100)
+    expect(items[1].duplicateOf).toMatchObject({ id: 100 })
+  })
+
+  it('跨月：原支出在更早的账单里，部分退款并进后，银行的同一笔退款也算重复', () => {
+    const old = tx({ date: '2026-09-20', amount: 45433, merged: [{ label: '支付宝账单', date: '2026-10-05', amount: 17457, ref: 'R1', refund: true }] })
+    const items = buildPreview([row({ date: '2026-10-05', amount: 17457, merchant: '支付宝（中国）网络技术有限公司', note: '快捷退款' })], { ...ctx([]), purchases: [old] })
+    expect(items[0].duplicateOf).toBe(old)
+  })
+
+  it('先部分退款、再退完剩下的：原金额仍按全部原金额算', () => {
+    const t = tx({
+      amount: 7000,
+      excluded: true,
+      merged: [
+        { label: '支付宝账单', date: '2026-10-11', amount: 3000, refund: true },
+        { label: '支付宝账单', date: '2026-10-12', amount: 7000, refund: true, full: true },
+      ],
+    })
+    expect(originalAmount(t)).toBe(10000)
+    expect(originalAmount(tx({ amount: 5000, excluded: true, merged: [{ label: 'x', date: '2026-10-12', amount: 5000, refund: true, full: true }] }))).toBe(5000)
+  })
+
+  it('重新导出的账单里又有原支出（算重复）和退款：退款仍对上原支出', () => {
+    const p = tx({ externalId: 'B1', merchant: '某店', note: '某商品', amount: 5000 })
+    const items = buildPreview(
+      [row({ type: 'expense', amount: 5000, merchant: '某店', note: '某商品', ref: 'B1' }), row({ amount: 5000, merchant: '某店', note: '退款-某商品', ref: 'R1' })],
+      ctx([p]),
+    )
+    expect(items[0].duplicateOf).toBe(p)
+    expect(items[1].refundOf).toMatchObject({ full: true, tx: { id: 100 } })
+  })
 })
