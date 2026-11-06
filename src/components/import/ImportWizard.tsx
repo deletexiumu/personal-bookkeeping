@@ -8,6 +8,7 @@ import { listImportTemplates, listRules, saveImportTemplate, saveRule } from '..
 import { ruleFromRow } from '../../lib/import/rules'
 import type { FieldKey } from '../../lib/import/fields'
 import { accountByCardTail, buildMerchantHistory, buildPreview, type PreviewItem } from '../../lib/import/preview'
+import { isRefundRow, REFUND_WINDOW_DAYS } from '../../lib/import/refund'
 import { finishRows, headerSignature, sniffFile, suggestTemplateName, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
 import { parseRows, type AmountSign, type ColumnMapping } from '../../lib/import/table'
 import type { BuiltinTemplate } from '../../lib/import/templates'
@@ -160,7 +161,8 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     try {
       const rows = finishRows(target, parseRows(target.table, columns, sign)).rows
       const refs = rows.flatMap((r) => (r.ref ? [r.ref] : []))
-      const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
+      const lookback = rows.some(isRefundRow) ? REFUND_WINDOW_DAYS : undefined
+      const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs, lookback)
       const batchSource = new Map((await db.importBatches.toArray()).map((b) => [b.id, b.source]))
       setItems(
         buildPreview(rows, {

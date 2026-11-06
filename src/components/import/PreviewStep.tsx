@@ -49,7 +49,15 @@ function duplicateText(item: PreviewItem): string {
   return `与 ${shortDate(dup.date)} ${dup.source === 'import' ? '已导入的' : '手记的'}一笔重复`
 }
 
+function refundText(item: PreviewItem): string {
+  const r = item.refundOf
+  if (!r) return ''
+  const what = `${shortDate(r.purchase.date)} ${r.tx ? '已有' : '本文件'}的「${r.purchase.merchant ?? r.purchase.note ?? '无备注'}」`
+  return r.full ? `退款，与 ${what}抵消，两条都不计收支` : `部分退款，从 ${what}里扣除`
+}
+
 function mergeText(item: PreviewItem): string {
+  if (item.refundOf) return refundText(item)
   if (!item.mergeWith) return ''
   return `与 ${describe(item.mergeWith)}是同一笔，${item.mergeAsTransfer ? '合并为本人账户间的转账' : '合并为一条'}`
 }
@@ -94,14 +102,15 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
   }
   /** 合并候选改为单独入账，或改回合并 */
   function toggleMerge(item: PreviewItem) {
-    if (item.mergeWith) {
-      const { mergeWith, weakMerge, mergeAsTransfer, transferPair } = item
+    if (item.mergeWith || item.refundOf) {
+      const { mergeWith, weakMerge, mergeAsTransfer, transferPair, refundOf } = item
       patch(item.key, {
         mergeWith: undefined,
         weakMerge: undefined,
         mergeAsTransfer: undefined,
         transferPair: undefined,
-        declinedMerge: { mergeWith, weakMerge, mergeAsTransfer, transferPair },
+        refundOf: undefined,
+        declinedMerge: { mergeWith, weakMerge, mergeAsTransfer, transferPair, refundOf },
         selected: !transferPair,
       })
     } else if (item.declinedMerge) {
@@ -202,7 +211,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
               <div className="preview-main">
                 <div className="preview-title">
                   <span className="t-body-m">{title}</span>
-                  {status === 'merge' && <Badge tone="brand">合并</Badge>}
+                  {status === 'merge' && <Badge tone="brand">{item.refundOf ? '退款' : '合并'}</Badge>}
                   {status === 'duplicate' && <Badge tone="warning">疑似重复</Badge>}
                   {status === 'uncategorized' && <Badge tone="expense">待分类</Badge>}
                   {status === 'ignored' && <Badge>{row.skipReason}</Badge>}
@@ -216,7 +225,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                       {SOURCE_TEXT[item.categorySource]}：{category?.name}
                     </Badge>
                   )}
-                  {row.type === 'income' && status !== 'ignored' && !item.transferPair && <Badge tone="income">收入</Badge>}
+                  {row.type === 'income' && status !== 'ignored' && !item.transferPair && !item.refundOf && <Badge tone="income">收入</Badge>}
                 </div>
                 <span className="t-caption text-tertiary">
                   {shortDate(row.date)}
@@ -225,19 +234,19 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
                   {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，不计入收支统计'}
-                  {((item.mergeWith && status !== 'ignored') || item.declinedMerge) && (
+                  {(((item.mergeWith || item.refundOf) && status !== 'ignored') || item.declinedMerge) && (
                     <>
                       {' · '}
                       <button type="button" className="link-button" onClick={() => toggleMerge(item)}>
-                        {item.mergeWith ? '不合并，单独入账' : '改回合并'}
+                        {item.mergeWith || item.refundOf ? '不合并，单独入账' : '改回合并'}
                       </button>
                     </>
                   )}
                 </span>
               </div>
               <span className="preview-category">
-              {item.mergeWith && (item.mergeAsTransfer || item.mergeWith.categoryId !== undefined) ? (
-                <span className="t-caption text-tertiary">{item.mergeAsTransfer ? '转账不分类' : '沿用已有分类'}</span>
+              {item.refundOf || (item.mergeWith && (item.mergeAsTransfer || item.mergeWith.categoryId !== undefined)) ? (
+                <span className="t-caption text-tertiary">{item.refundOf ? '退款不分类' : item.mergeAsTransfer ? '转账不分类' : '沿用已有分类'}</span>
               ) : (
               <select
                 className="input"

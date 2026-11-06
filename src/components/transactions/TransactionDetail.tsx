@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { db } from '../../db'
 import { updateTransaction, type TransactionPatch } from '../../db/transactions'
 import { evaluateAmount, normalizeExpression } from '../../lib/expression'
+import { formatCents } from '../../lib/money'
 import { formatTags, parseTags } from '../../lib/tags'
 import type { Account, Category, Transaction } from '../../types'
 import { CategoryIcon } from '../CategoryIcon'
@@ -241,7 +242,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
             <ul className="tx-detail-merged">
               {t.merged.map((m, i) => (
                 <li key={i} className="t-caption text-secondary">
-                  <span className="text-tertiary">{m.label}</span> {m.date}
+                  <span className="text-tertiary">{m.refund ? `退款 ${formatCents(m.amount ?? 0)} · ${m.label}` : m.label}</span> {m.date}
                   {m.time && ` ${m.time}`}
                   {m.account && ` · ${m.account}`}
                   {[m.merchant, m.note].filter(Boolean).length > 0 && ` · ${[m.merchant, m.note].filter(Boolean).join(' / ')}`}

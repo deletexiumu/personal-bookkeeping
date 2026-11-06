@@ -78,6 +78,8 @@ export interface MergedEntry {
   amount?: number
   /** 原交易单号 */
   ref?: string
+  /** 这一行是退款：部分退款并进原支出时，原支出的金额已减掉它 */
+  refund?: boolean
 }
 
 /** 分类和账户图标的配色，对应 tokens.css 中的语义色 / 图表色 */

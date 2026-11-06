@@ -1,5 +1,6 @@
 import type { Account, AccountType, Category, CategoryRule, ImportSource, MergedEntry, Transaction } from '../../types'
 import { KEYWORD_DICTIONARY } from './keywords'
+import { findRefundTarget, isRefundRow, originalAmount, type Purchase, type RefundTarget } from './refund'
 import { findRule } from './rules'
 import { CATEGORY_ALIASES } from './templates'
 import { normalizeText, similarity } from './similarity'
@@ -29,8 +30,10 @@ export interface PreviewItem {
   mergeAsTransfer?: { from: number; to: number }
   /** 本人账户间挪钱的另一边：这一行（不计收支）与已有那条（不计收支）合并成一笔转账 */
   transferPair?: boolean
+  /** 这一行是退款，对上了原支出（已有流水或本批次前面的行） */
+  refundOf?: RefundTarget & { purchase: Purchase }
   /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
-  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer' | 'transferPair'>
+  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer' | 'transferPair' | 'refundOf'>
   selected: boolean
 }
 
@@ -39,6 +42,7 @@ export type PreviewStatus = 'new' | 'merge' | 'duplicate' | 'uncategorized' | 'i
 /** 每行只归入一种状态：忽略 > 合并 > 疑似重复 > 待分类 > 新增 */
 export function statusOf(item: PreviewItem): PreviewStatus {
   if (item.row.skipReason && !(item.transferPair && item.mergeWith)) return 'ignored'
+  if (item.refundOf) return 'merge'
   if (item.mergeWith) return item.weakMerge ? 'duplicate' : 'merge'
   if (item.duplicateOf) return 'duplicate'
   if (item.categoryId === undefined) return 'uncategorized'
@@ -61,12 +65,11 @@ function hasBankEntry(t: Transaction): boolean {
 function mergedContains(t: Transaction, row: ParsedRow): boolean {
   if (!t.merged?.length) return false
   if (row.ref) return t.merged.some((m) => m.ref === row.ref)
-  // 合并时可能改成了转账（钱包提现到银行卡），类型不再一致
-  if (t.type !== 'transfer' && t.type !== row.type) return false
   return t.merged.some(
     (m) =>
-      m.bank &&
-      (m.amount ?? t.amount) === row.amount &&
+      // 退款行是收入、并进的是支出；合并时可能改成了转账（钱包提现到银行卡）：这两种类型不再一致
+      (m.refund || ((m.bank ?? false) && (t.type === 'transfer' || t.type === row.type))) &&
+      (m.amount ?? originalAmount(t)) === row.amount &&
       m.date === row.date &&
       normalizeText(m.merchant) === normalizeText(row.merchant) &&
       normalizeText(m.note) === normalizeText(row.note),
@@ -102,7 +105,7 @@ export function findDuplicate(row: ParsedRow, candidates: Transaction[], exclude
     if (mergedContains(t, row)) return true
     if (row.ref && t.externalId) return row.ref === t.externalId
     if (!row.ref !== !t.externalId) return false
-    if (t.type !== row.type || t.amount !== row.amount) return false
+    if (t.type !== row.type || originalAmount(t) !== row.amount) return false
     const diff = dayDiff(t.date, row.date)
     if (diff > 1) return false
     const theirs = t.merchant ?? t.note
@@ -157,7 +160,7 @@ export interface MergeMatch {
 /** 已有流水 t 还能不能和这一行合并：一方有单号、一方没有，类型和金额相同，t 还没合并过银行流水 */
 export function canMerge(t: Transaction, row: ParsedRow): boolean {
   if (hasBankEntry(t) || !row.ref === !t.externalId) return false
-  return t.type !== 'transfer' && t.type === row.type && t.amount === row.amount
+  return t.type !== 'transfer' && t.type === row.type && originalAmount(t) === row.amount
 }
 
 /** 保存时再确认一次：已有那条还能按预览时的方式合并 */
@@ -618,6 +621,25 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       claimed.add(merge.tx)
     }
   }
+  // 退款：对上原支出（已有流水，或本批次里的支出），按日期先后处理，部分退款依次从原支出里扣
+  const purchases: Purchase[] = [
+    ...ctx.existing
+      .filter((t) => t.type === 'expense' && !t.excluded && t.id !== undefined)
+      .map((t) => ({ tx: t, accountId: t.accountId, date: t.date, amount: t.amount, merchant: t.merchant, note: t.note })),
+    ...items
+      .filter((i) => !i.duplicateOf && !i.mergeWith && !i.row.skipReason && i.row.type === 'expense')
+      .map((i) => ({ key: i.key, accountId: i.accountId, date: i.row.date, amount: i.row.amount, merchant: i.row.merchant, note: i.row.note })),
+  ]
+  const fullyRefunded = new Set<Purchase>()
+  const refunds = items.filter((i) => !i.duplicateOf && !i.mergeWith && isRefundRow(i.row)).sort((a, b) => a.row.date.localeCompare(b.row.date))
+  for (const item of refunds) {
+    const purchase = findRefundTarget(item.row, item.accountId, purchases, fullyRefunded)
+    if (!purchase) continue
+    const full = purchase.amount === item.row.amount
+    item.refundOf = { tx: purchase.tx, key: purchase.key, full, purchase: { ...purchase } }
+    if (full) fullyRefunded.add(purchase)
+    else purchase.amount -= item.row.amount
+  }
   for (const item of items) {
     const hit = classify(item.row, ctx)
     if (hit) {
@@ -654,7 +676,8 @@ export function summarizePreview(items: PreviewItem[]): PreviewSummary {
     s[statusOf(item)]++
     if (item.selected) {
       s.selected++
-      if (item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined && !isNeutral(item.row)) s.selectedUncategorized++
+      const uncategorized = item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined && !isNeutral(item.row) && !item.refundOf
+      if (uncategorized) s.selectedUncategorized++
     }
   }
   return s
