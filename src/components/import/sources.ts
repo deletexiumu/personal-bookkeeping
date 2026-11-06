@@ -11,11 +11,9 @@ export interface SourceDef {
   upcoming?: string
   /** 导出教程 */
   guide: string[]
-  /** 不单独显示卡片（自动识别，导入记录里显示名称和图标） */
-  hidden?: boolean
 }
 
-/** 导入中心的来源卡片（M04），顺序与设计稿一致 */
+/** 导入中心的来源卡片（M04）；规划中的放最后 */
 export const SOURCES: SourceDef[] = [
   {
     id: 'wechat',
@@ -34,6 +32,14 @@ export const SOURCES: SourceDef[] = [
     guide: ['支付宝 → 我的 → 账单', '右上角「…」→「开具交易流水证明」→「用于个人对账」', '选择时间范围，账单会发到邮箱（解压密码见支付宝通知）'],
   },
   {
+    id: 'douyin',
+    name: '抖音支付账单',
+    hint: '交易流水 csv',
+    icon: Music2,
+    tone: 'red',
+    guide: ['在抖音钱包的账单里开具交易流水（用途选个人对账），选择时间范围', '下载 CSV 后在这里选择文件，自动识别，不用手动映射'],
+  },
+  {
     id: 'bank',
     name: '银行卡账单',
     hint: 'CSV / PDF 流水',
@@ -48,11 +54,18 @@ export const SOURCES: SourceDef[] = [
   {
     id: 'csv',
     name: '通用表格',
-    hint: '任意 CSV / TSV，含抖音支付',
+    hint: '任意 CSV / TSV',
     icon: Sheet,
     tone: 'orange',
-    guide: [
-      '抖音支付账单：在抖音钱包的账单里开具交易流水，下载的 CSV 直接选择即可自动识别','表格至少要有日期和金额两列，可以有收支方向、商户、备注、分类、账户等列', 'Excel 文件请先「另存为」CSV（UTF-8 或 GBK 编码都可以）', '金额可以带正负号，也可以分成支出、收入两列'],
+    guide: ['表格至少要有日期和金额两列，可以有收支方向、商户、备注、分类、账户等列', 'Excel 文件请先「另存为」CSV（UTF-8 或 GBK 编码都可以）', '金额可以带正负号，也可以分成支出、收入两列'],
+  },
+  {
+    id: 'json',
+    name: '备份恢复',
+    hint: '本应用导出的 JSON',
+    icon: Braces,
+    tone: 'gray',
+    guide: ['在「设置 → 数据备份」导出 JSON 备份文件', '在这里选择备份文件，确认后按 ID 合并恢复：同 ID 的记录被备份覆盖，备份里没有的本地数据保留', '恢复不能撤销，建议先导出一份当前数据'],
   },
   {
     id: 'ocr',
@@ -62,23 +75,6 @@ export const SOURCES: SourceDef[] = [
     tone: 'cyan',
     upcoming: '规划中',
     guide: ['识别支付截图和小票上的金额、商户和时间，识别方案确定后提供'],
-  },
-  {
-    id: 'douyin',
-    name: '抖音支付',
-    hint: '交易流水 CSV',
-    icon: Music2,
-    tone: 'gray',
-    hidden: true,
-    guide: ['在抖音钱包的账单里开具交易流水，下载 CSV 后在「通用表格」里选择文件'],
-  },
-  {
-    id: 'json',
-    name: '备份恢复',
-    hint: '本应用导出的 JSON',
-    icon: Braces,
-    tone: 'gray',
-    guide: ['在「设置 → 数据备份」导出 JSON 备份文件', '在这里选择备份文件，确认后按 ID 合并恢复：同 ID 的记录被备份覆盖，备份里没有的本地数据保留', '恢复不能撤销，建议先导出一份当前数据'],
   },
 ]
 

@@ -39,7 +39,7 @@ export function ImportCenter({ onStart }: { onStart: (source: ImportSource) => v
           选择来源
         </h2>
         <ul className="source-grid">
-          {SOURCES.filter((source) => !source.hidden).map((source) => {
+          {SOURCES.map((source) => {
             const available = !source.upcoming
             return (
               <li key={source.id} className="card source-card" data-disabled={available ? undefined : ''}>
