@@ -40,16 +40,26 @@ function dayDiff(a: string, b: string): number {
 
 /**
  * 疑似重复：类型和金额相同，并且满足其一：
+ * - 跨渠道：一方有交易单号（微信、支付宝、抖音等钱包账单）、另一方没有（银行流水、手记），
+ *   入账账户相同且日期相差不超过 1 天。钱包用银行卡付款时，同一笔钱会同时出现在钱包账单和银行流水里；
  * - 同一天，且已有流水是手记的（手记备注往往和账单商户写法不同）或任一方没有商户 / 备注；
  * - 日期相差不超过 1 天，且商户 / 备注相似（相似度 ≥ 0.5）。
- * 双方都有交易单号时只按单号精确比对。
+ * 双方都有交易单号时只按单号精确比对。exclude 里的流水（已被本批次前面的行认领）不再参与比对，
+ * 保证一笔已有流水只对应一行。
  */
-export function findDuplicate(row: ParsedRow, candidates: Transaction[]): Transaction | undefined {
+export function findDuplicate(
+  row: ParsedRow,
+  candidates: Transaction[],
+  accountId?: number,
+  exclude?: ReadonlySet<Transaction>,
+): Transaction | undefined {
   return candidates.find((t) => {
+    if (exclude?.has(t)) return false
     if (row.ref && t.externalId) return row.ref === t.externalId
     if (t.type !== row.type || t.amount !== row.amount) return false
     const diff = dayDiff(t.date, row.date)
     if (diff > 1) return false
+    if (accountId !== undefined && t.accountId === accountId && !row.ref !== !t.externalId) return true
     const theirs = t.merchant ?? t.note
     const missingText = !normalizeText(row.merchant ?? row.note) || !normalizeText(theirs)
     if (diff === 0 && (t.source !== 'import' || missingText)) return true
@@ -122,14 +132,69 @@ const WALLET_HINTS: [RegExp, Account['type']][] = [
   [/余额宝|账户余额|花呗|支付宝/, 'alipay'],
 ]
 
-/** 文件里的账户名对应到本地账户：完全相同、互相包含或钱包类型，否则用默认账户 */
+/** 银行全称与简称，用于把「招商银行储蓄卡(1234)」对应到名为「招行卡」的账户 */
+const BANKS: RegExp[] = [
+  /招商|招行/,
+  /中信/,
+  /工商|工行/,
+  /建设银行|建行/,
+  /农业银行|农行/,
+  /交通银行|交行/,
+  /中国银行|中行/,
+  /邮储|邮政/,
+  /浦发/,
+  /广发/,
+  /平安/,
+  /兴业/,
+  /民生/,
+  /光大/,
+  /华夏/,
+]
+
+/** 账单里的卡号尾号：「招商银行储蓄卡(1234)」「借记卡（1234）」或纯数字卡号的末 4 位 */
+export function cardTail(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const digits = text.replace(/\s/g, '')
+  // 完整或打码的卡号，如 6214836100001234、6214****1234
+  if (/^\d[\d*]{6,}\d{4}$/.test(digits)) return digits.slice(-4)
+  return /[(（]\s*(?:尾号)?(\d{4})\s*[)）]/.exec(text)?.[1] ?? /尾号\s*(\d{4})/.exec(text)?.[1]
+}
+
+/** 账户名或备注里含有该卡号尾号的账户 */
+export function accountByCardTail(text: string | undefined, accounts: Account[]): number | undefined {
+  const tail = cardTail(text)
+  if (!tail) return undefined
+  const re = new RegExp(`(?<!\\d)${tail}(?!\\d)`)
+  return accounts.find((a) => !a.archived && a.id !== undefined && (re.test(a.name) || re.test(a.note ?? '')))?.id
+}
+
+const cardKind = (text: string): 'credit' | 'debit' | undefined => (/信用/.test(text) ? 'credit' : /储蓄|借记/.test(text) ? 'debit' : undefined)
+
+/** 按银行名匹配：同一家银行、卡种不冲突（信用卡 / 储蓄卡）的账户只有一个时采用 */
+function accountByBank(name: string, accounts: Account[]): number | undefined {
+  const bank = BANKS.find((re) => re.test(name))
+  if (!bank) return undefined
+  const kind = cardKind(name)
+  const hits = accounts.filter((a) => {
+    if (!bank.test(a.name)) return false
+    const theirs = a.type === 'credit' || a.type === 'debit' ? a.type : cardKind(a.name)
+    return !kind || !theirs || kind === theirs
+  })
+  return hits.length === 1 ? hits[0].id : undefined
+}
+
+/** 文件里的账户名对应到本地账户：完全相同、卡号尾号、互相包含、银行名或钱包类型，否则用默认账户 */
 export function matchAccount(name: string | undefined, accounts: Account[], fallback: number): number {
   if (!name) return fallback
   const active = accounts.filter((a) => !a.archived && a.id !== undefined)
   const exact = active.find((a) => a.name === name)
   if (exact) return exact.id!
+  const byTail = accountByCardTail(name, active)
+  if (byTail !== undefined) return byTail
   const loose = active.find((a) => name.includes(a.name) || a.name.includes(name))
   if (loose) return loose.id!
+  const byBank = accountByBank(name, active)
+  if (byBank !== undefined) return byBank
   const hint = WALLET_HINTS.find(([re]) => re.test(name))?.[1]
   return active.find((a) => hint && a.type === hint)?.id ?? fallback
 }
@@ -144,6 +209,7 @@ export interface PreviewContext extends ClassifyContext {
 /** 组装预览：去重、自动分类、匹配账户；疑似重复和忽略的行默认不勾选 */
 export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewItem[] {
   const seen = new Set<string>()
+  const claimed = new Set<Transaction>()
   return rows.map((row, key) => {
     const item: PreviewItem = {
       key,
@@ -151,10 +217,12 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       accountId: matchAccount(row.accountName, ctx.accounts, ctx.defaultAccountId),
       selected: false,
     }
-    const dup = findDuplicate(row, ctx.existing)
+    const dup = findDuplicate(row, ctx.existing, item.accountId, claimed)
     const bk = batchKey(row)
-    if (dup) item.duplicateOf = dup
-    else if (bk && seen.has(bk)) item.duplicateOf = 'batch'
+    if (dup) {
+      item.duplicateOf = dup
+      claimed.add(dup)
+    } else if (bk && seen.has(bk)) item.duplicateOf = 'batch'
     if (bk) seen.add(bk)
     const hit = classify(row, ctx)
     if (hit) {

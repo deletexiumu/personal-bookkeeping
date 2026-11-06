@@ -7,8 +7,8 @@ import { commitImport, loadDedupeCandidates, loadMerchantTransactions } from '..
 import { listImportTemplates, listRules, saveImportTemplate, saveRule } from '../../db/rules'
 import { ruleFromRow } from '../../lib/import/rules'
 import type { FieldKey } from '../../lib/import/fields'
-import { buildMerchantHistory, buildPreview, type PreviewItem } from '../../lib/import/preview'
-import { headerSignature, sniffFile, suggestTemplateName, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
+import { accountByCardTail, buildMerchantHistory, buildPreview, type PreviewItem } from '../../lib/import/preview'
+import { finishRows, headerSignature, sniffFile, suggestTemplateName, withHeaderRow, type SniffResult } from '../../lib/import/sniff'
 import { parseRows, type AmountSign, type ColumnMapping } from '../../lib/import/table'
 import type { BuiltinTemplate } from '../../lib/import/templates'
 import type { Account, Category, ImportBatch, ImportSource } from '../../types'
@@ -43,13 +43,20 @@ function readBytes(file: File): Promise<Uint8Array> {
   })
 }
 
-/** 默认入账账户：模板指定的钱包账户；银行卡账单优先储蓄卡 / 信用卡 */
-function defaultAccountFor(source: ImportSource, accounts: Account[], template?: BuiltinTemplate): number | undefined {
+/**
+ * 默认入账账户：账单里的卡号尾号与账户名 / 备注一致的账户；模板指定的账户（名称提示、类型）；
+ * 银行卡账单优先储蓄卡 / 信用卡
+ */
+function defaultAccountFor(source: ImportSource, accounts: Account[], template?: BuiltinTemplate, accountNo?: string): number | undefined {
+  const byCard = accountByCardTail(accountNo, accounts)
+  if (byCard !== undefined) return byCard
   if (template) {
+    const hinted = template.accountHint && accounts.find((a) => !a.archived && template.accountHint!.test(a.name))
+    if (hinted) return hinted.id
     const wallet = accounts.find((a) => a.type === template.accountType)
     if (wallet) return wallet.id
   }
-  if (source === 'bank') {
+  if (source === 'bank' || template?.source === 'bank') {
     const card = accounts.find((a) => a.type === 'debit' || a.type === 'credit')
     if (card) return card.id
   }
@@ -82,14 +89,14 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
   )
 
   const parsed = useMemo(
-    () => (sniff ? parseRows(sniff.table, mapping, amountSign) : { rows: [], errors: [] }),
+    () => (sniff ? finishRows(sniff, parseRows(sniff.table, mapping, amountSign)) : { rows: [], errors: [] }),
     [sniff, mapping, amountSign],
   )
 
   async function handleFile(file: File) {
     setFileError(null)
-    if (/\.(xls|pdf|zip|rar)$/i.test(file.name)) {
-      setFileError('暂时只支持 CSV / TSV 和 xlsx。旧版 xls 请先另存为 xlsx 或 CSV；压缩包请先解压。')
+    if (/\.(xls|zip|rar)$/i.test(file.name)) {
+      setFileError('暂时只支持 CSV / TSV、xlsx 和 PDF。旧版 xls 请先另存为 xlsx 或 CSV；压缩包请先解压。')
       return
     }
     let result: SniffResult
@@ -110,7 +117,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     setSaveTemplate(false)
     if (result.template) {
       // 命中内置模板：跳过字段映射，直接预览
-      const id = defaultAccountFor(result.template.source, accounts, result.template)
+      const id = defaultAccountFor(result.template.source, accounts, result.template, result.accountNo)
       setAccountId(id)
       await toPreview(result, result.mapping, id)
     } else if (result.userTemplate) {
@@ -143,7 +150,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
   async function toPreview(target = sniff, columns = mapping, account = accountId, sign = amountSign) {
     if (!target) return
     // 直接打开导入页时账户可能稍后才加载完
-    const defaultAccountId = account ?? defaultAccountFor(source, accounts, target.template)
+    const defaultAccountId = account ?? defaultAccountFor(source, accounts, target.template, target.accountNo)
     if (defaultAccountId === undefined) {
       toast.show({ message: '请先在「账户」里添加一个账户' })
       setStep('mapping')
@@ -151,7 +158,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
     }
     setBusy(true)
     try {
-      const rows = parseRows(target.table, columns, sign).rows
+      const rows = finishRows(target, parseRows(target.table, columns, sign)).rows
       const refs = rows.flatMap((r) => (r.ref ? [r.ref] : []))
       const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
       setItems(buildPreview(rows, { categories, rules, merchantHistory, accounts, defaultAccountId, existing }))

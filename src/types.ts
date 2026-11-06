@@ -93,7 +93,7 @@ export interface Budget extends SyncMeta {
 }
 
 /** 账单来源 */
-export type ImportSource = 'wechat' | 'alipay' | 'bank' | 'csv' | 'json'
+export type ImportSource = 'wechat' | 'alipay' | 'douyin' | 'bank' | 'csv' | 'json'
 
 /** 一次导入：用于导入记录与整批撤销 */
 export interface ImportBatch extends SyncMeta {

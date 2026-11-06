@@ -34,6 +34,16 @@ describe('导入批次', () => {
     expect(batch).toMatchObject({ id: batchId, fileName: 'a.csv', rowCount: 3, importedCount: 2, status: 'done' })
   })
 
+  it('保存时按交易单号去重：账本里已有的单号和本次重复的单号都不再写入', async () => {
+    await addTransaction(db, { type: 'expense', amount: 100, accountId: 2, date: '2026-10-31', externalId: 'R0' })
+    const dupInBatch = { ...item(2), key: 3 }
+    const batchId = await commitImport(db, { source: 'wechat', fileName: 'b.xlsx', rowCount: 4, items: [item(0), item(1), item(2), dupInBatch] })
+    const rows = await db.transactions.where('importBatchId').equals(batchId).toArray()
+    expect(rows.map((r) => r.externalId)).toEqual(['R1', 'R2'])
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 2 })
+    expect(await db.transactions.where('externalId').equals('R0').count()).toBe(1)
+  })
+
   it('整批撤销删除该批次流水，不影响其他记录', async () => {
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-31' })
     const batchId = await commitImport(db, { source: 'csv', fileName: 'a.csv', rowCount: 2, items: [item(0), item(1)] })

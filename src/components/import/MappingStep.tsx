@@ -9,7 +9,7 @@ import { CategoryIcon } from '../CategoryIcon'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
-const FORMAT_TEXT = { 'utf-8': 'UTF-8 编码', gbk: 'GBK 编码（已自动转换）', xlsx: 'Excel 工作簿' } as const
+const FORMAT_TEXT = { 'utf-8': 'UTF-8 编码', gbk: 'GBK 编码（已自动转换）', xlsx: 'Excel 工作簿', pdf: 'PDF 文档' } as const
 
 const STATUS_BADGE = {
   matched: { tone: 'income', text: '已匹配' },

@@ -9,8 +9,9 @@ interface Props {
 }
 
 const DEFAULT_ACCEPT =
-  '.csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-const DEFAULT_HINT = '支持 CSV / TSV / xlsx，自动识别 UTF-8 与 GBK 编码和微信、支付宝账单；文件只在本机解析，不会上传'
+  '.csv,.tsv,.txt,.xlsx,.pdf,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf'
+const DEFAULT_HINT =
+  '支持 CSV / TSV / xlsx / PDF，自动识别微信、支付宝、抖音支付账单和招商、中信银行流水；文件只在本机解析，不会上传'
 
 /** 第 2 步：选择或拖入文件 */
 export function UploadStep({ error, onFile, accept = DEFAULT_ACCEPT, hint = DEFAULT_HINT }: Props) {
