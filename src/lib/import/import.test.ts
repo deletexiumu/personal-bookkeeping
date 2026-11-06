@@ -482,7 +482,7 @@ describe('本人账户间挪钱', () => {
     expect(toTransaction({ ...item, row: row({ skipReason: '交易关闭' }) }).excluded).toBeUndefined()
   })
 
-  it('中信转出、招行转入：两边合并成一笔转账', () => {
+  it('中信转出、招行转入：两边合并成一笔转账，两边原文都记进明细', () => {
     const out = self({ accountId: 5, type: 'expense', amount: 500000, merchant: '张三', note: '网银互联跨行转出', date: '2026-10-30' })
     const inRow = row({ type: 'income', amount: 500000, merchant: '张三', note: '汇入汇款', skipReason: '本人账户互转' })
     expect(findTransferPair(inRow, [out], 2)).toBe(out)
@@ -499,15 +499,44 @@ describe('本人账户间挪钱', () => {
     const next = mergeTransaction(out, items[0], labels)
     expect(next).toMatchObject({ id: 500, type: 'transfer', accountId: 5, transferAccountId: 2, amount: 500000, note: '网银互联跨行转出' })
     expect(next.excluded).toBeUndefined()
-    expect(next.merged).toEqual([{ label: '招商银行流水', date: '2026-10-31', merchant: '张三', note: '汇入汇款', account: '招行卡', bank: true }])
+    expect(next.merged).toEqual([
+      { label: '中信银行流水', date: '2026-10-30', merchant: '张三', note: '网银互联跨行转出', account: '中信卡', bank: true, amount: 500000 },
+      { label: '招商银行流水', date: '2026-10-31', merchant: '张三', note: '汇入汇款', account: '招行卡', bank: true, amount: 500000 },
+    ])
+    // 之后重复导入任一份银行流水都算重复
+    const again = (r: typeof inRow, accountId: number) => buildPreview([r], ctx([next], accountId))[0].duplicateOf
+    expect(again(inRow, 2)).toBe(next)
+    expect(again(row({ type: 'expense', amount: 500000, merchant: '张三', note: '网银互联跨行转出', date: '2026-10-30', skipReason: '本人账户互转' }), 5)).toBe(next)
   })
 
-  it('微信提现到招行卡：微信记成收入、差一笔服务费，也按流出配对', () => {
-    const wechat = self({ accountId: 4, type: 'income', amount: 50657, merchant: '招商银行(1234)', note: '服务费¥0.51', externalId: 'W1' })
-    const bankRow = row({ type: 'income', amount: 50606, merchant: '张三', note: '网联收款', skipReason: '本人账户互转' })
-    const items = buildPreview([bankRow], ctx([wechat], 2))
+  it('微信提现到招行卡：微信把提现记成收入、差一笔服务费，按流出配对，手续费另记', () => {
+    const bank = self({ accountId: 2, type: 'income', amount: 50606, merchant: '张三', note: '网联收款' })
+    // 微信账单的提现行：方向「/」、金额为正，解析成收入；类型列是「零钱提现」
+    const wechatRow = row({ type: 'income', amount: 50657, ref: 'W1', merchant: '招商银行(1234)', kind: '零钱提现', note: '服务费¥0.51', skipReason: '不计收支' })
+    const items = buildPreview([wechatRow], { ...ctx([bank], 4), source: 'wechat' })
     expect(items[0]).toMatchObject({ transferPair: true, mergeAsTransfer: { from: 4, to: 2 } })
-    expect(mergeTransaction(wechat, items[0], labels)).toMatchObject({ type: 'transfer', amount: 50606, accountId: 4, transferAccountId: 2, externalId: 'W1' })
+    const next = mergeTransaction(bank, items[0], { ...labels, incoming: '微信账单', existing: '招商银行流水' })
+    expect(next).toMatchObject({ type: 'transfer', amount: 50606, accountId: 4, transferAccountId: 2 })
+    // 重复导入微信账单按单号认出，重复导入银行流水按明细认出
+    expect(buildPreview([wechatRow], { ...ctx([next], 4), source: 'wechat' })[0].duplicateOf).toBe(next)
+    expect(buildPreview([row({ type: 'income', amount: 50606, merchant: '张三', note: '网联收款', skipReason: '本人账户互转' })], ctx([next], 2))[0].duplicateOf).toBe(next)
+    // 转入比转出多、或差额不是手续费：不配对
+    expect(findTransferPair({ ...wechatRow, amount: 50555 }, [bank], 4, 'wechat')).toBeUndefined()
+  })
+
+  it('先导入了银行流水（财付通入账照常记收入），再导入微信提现：也合并成转账', () => {
+    const bank = tx({ id: 600, source: 'import', accountId: 2, type: 'income', amount: 20000, note: '财付通快捷支付' })
+    const wechatRow = row({ type: 'income', amount: 20000, ref: 'W2', merchant: '中信银行(1145)', kind: '零钱提现', skipReason: '不计收支' })
+    expect(findTransferPair(wechatRow, [bank], 4, 'wechat')).toBe(bank)
+    // 渠道对不上（支付宝）不配对；银行那条是普通收入时，提现没写明渠道也不配对
+    expect(findTransferPair(wechatRow, [bank], 4, 'alipay')).toBeUndefined()
+    expect(findTransferPair(wechatRow, [{ ...bank, note: '工资' }], 4, 'wechat')).toBeUndefined()
+  })
+
+  it('银行流水按金额正负判断方向，摘要里有「提现」也不改', () => {
+    const out = self({ accountId: 5, type: 'income', amount: 1000, note: '证券提现' })
+    const inRow = row({ type: 'expense', amount: 1000, note: '银证转账', skipReason: '本人账户互转' })
+    expect(findTransferPair(inRow, [out], 2)).toBe(out)
   })
 
   it('找不到另一边时照旧忽略；勾选后按不计收支入账，不计入待分类', () => {

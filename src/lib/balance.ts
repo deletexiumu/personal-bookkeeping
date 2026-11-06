@@ -1,7 +1,7 @@
 import type { Account, Transaction } from '../types'
 
 /**
- * 计算账户余额（分）：初始余额 + 收入 − 支出 − 转出 + 转入。
+ * 计算账户余额（分）：初始余额 + 收入 − 支出 − 转出 + 转入。不计收支的流水只保留明细，不计入余额。
  * 信用卡余额为负表示欠款。
  */
 export function computeBalances(accounts: Account[], transactions: Transaction[]): Map<number, number> {
@@ -11,6 +11,7 @@ export function computeBalances(accounts: Account[], transactions: Transaction[]
     if (id !== undefined && balances.has(id)) balances.set(id, balances.get(id)! + delta)
   }
   for (const t of transactions) {
+    if (t.excluded) continue
     if (t.type === 'income') add(t.accountId, t.amount)
     else if (t.type === 'expense') add(t.accountId, -t.amount)
     else {

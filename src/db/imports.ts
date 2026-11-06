@@ -1,15 +1,15 @@
 import { shiftDate } from '../lib/date'
-import { mergeTransaction, stillMergeable, toTransaction, type PreviewItem } from '../lib/import/preview'
+import { flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
 import type { ImportBatch, ImportSource, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
 
-/** 去重候选：日期范围前后各多 1 天的已有流水，加上单号相同的流水 */
+/** 去重候选：日期范围前后各多 2 天的已有流水（本人账户间转账两边最多差 2 天），加上单号相同的流水 */
 export async function loadDedupeCandidates(db: BookkeepingDB, dates: string[], refs: string[]): Promise<Transaction[]> {
   if (dates.length === 0) return []
   const sorted = [...dates].sort()
   const inRange = await db.transactions
     .where('date')
-    .between(shiftDate(sorted[0], -1), shiftDate(sorted.at(-1)!, 1), true, true)
+    .between(shiftDate(sorted[0], -2), shiftDate(sorted.at(-1)!, 2), true, true)
     .toArray()
   const byRef = refs.length > 0 ? await db.transactions.where('externalId').anyOf(refs).toArray() : []
   const seen = new Set(inRange.map((t) => t.id))
@@ -70,10 +70,11 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     }
     const inserts: PreviewItem[] = []
     const merges: Transaction[] = []
+    const fees: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'importBatchId'>[] = []
     for (const item of chosen) {
       const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
       // 预览之后已有那条被删了，或在别处已经合并过：照常新增
-      if (!current || !stillMergeable(current, item)) {
+      if (!current || !stillMergeable(current, item, input.source)) {
         inserts.push(item)
         continue
       }
@@ -83,6 +84,13 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         accountName: (id) => accountNames.get(id),
       })
       merges.push({ ...merged, updatedAt: now })
+      // 提现扣的手续费：转账按到账金额记，差额记一笔支出
+      if (item.transferPair) {
+        const rowOut = flowOf(item.row, !!item.row.ref) === 'expense'
+        const [out, inn] = rowOut ? [item.row.amount, current.amount] : [current.amount, item.row.amount]
+        const fee = transferFee(out, inn, item.row.note, current.note)
+        if (fee) fees.push({ type: 'expense', amount: fee, accountId: merged.accountId, date: merged.date, time: merged.time, note: '提现手续费', source: 'import' })
+      }
     }
     const batchId = (await db.importBatches.add({
       source: input.source,
@@ -95,7 +103,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     })) as number
     await db.transactions.bulkAdd(
       // createdAt 递减，让同一时间的行在明细中保持文件里的先后顺序
-      inserts.map((item, i) => ({ ...toTransaction(item), importBatchId: batchId, createdAt: now - i, updatedAt: now })),
+      [...inserts.map(toTransaction), ...fees].map((t, i) => ({ ...t, importBatchId: batchId, createdAt: now - i, updatedAt: now })),
     )
     if (merges.length > 0) await db.transactions.bulkPut(merges)
     return batchId

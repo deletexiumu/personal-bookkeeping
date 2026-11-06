@@ -216,7 +216,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                       {SOURCE_TEXT[item.categorySource]}：{category?.name}
                     </Badge>
                   )}
-                  {row.type === 'income' && status !== 'ignored' && <Badge tone="income">收入</Badge>}
+                  {row.type === 'income' && status !== 'ignored' && !item.transferPair && <Badge tone="income">收入</Badge>}
                 </div>
                 <span className="t-caption text-tertiary">
                   {shortDate(row.date)}
@@ -224,7 +224,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {row.merchant && row.note && ` · ${row.note}`}
                   {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
-                  {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，只算账户余额'}
+                  {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，只保留明细，不计入收支和余额'}
                   {((item.mergeWith && status !== 'ignored') || item.declinedMerge) && (
                     <>
                       {' · '}

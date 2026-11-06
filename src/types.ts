@@ -49,8 +49,8 @@ export interface Transaction extends SyncMeta {
   /** 外部交易单号（账单导入），用于重复导入时精确去重 */
   externalId?: string
   /**
-   * 不计收支：本人账户之间挪钱（余额宝转入、钱包提现等）又找不到另一边时，保留明细、照常计入账户余额，
-   * 但不计入收入、支出、预算和分析
+   * 不计收支：本人账户之间挪钱（余额宝转入、钱包提现等）又找不到另一边时，只保留明细，
+   * 不计入收入、支出、预算、分析和账户余额（这类行在账单里的收支方向常常不可靠）
    */
   excluded?: boolean
   /**
@@ -74,6 +74,10 @@ export interface MergedEntry {
   account?: string
   /** 这一行来自银行流水（用来识别重复导入，已经合并过银行流水的不再合并） */
   bank?: boolean
+  /** 原金额（分），与合并后的金额不同时记下，如提现扣了手续费 */
+  amount?: number
+  /** 原交易单号 */
+  ref?: string
 }
 
 /** 分类和账户图标的配色，对应 tokens.css 中的语义色 / 图表色 */

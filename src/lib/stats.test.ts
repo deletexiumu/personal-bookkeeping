@@ -35,8 +35,8 @@ describe('不计收支', () => {
     expect(expenseByCategory(rows).total).toBe(1000)
   })
 
-  it('仍计入账户余额，可以按「不计收支」搜索', () => {
-    expect(computeBalances([{ id: 1, name: '支付宝', initialBalance: 0 }], rows).get(1)).toBe(-1000 + 5000 - 300)
+  it('不计入账户余额，可以按「不计收支」搜索', () => {
+    expect(computeBalances([{ id: 1, name: '支付宝', initialBalance: 0 }], rows).get(1)).toBe(-1000)
     expect(filterTransactions(rows, { query: '不计收支' }).map((t) => t.id)).toEqual([2, 3])
   })
 })

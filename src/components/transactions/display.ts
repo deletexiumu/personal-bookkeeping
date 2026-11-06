@@ -26,9 +26,9 @@ export function accountLabel(t: Transaction, lookup: Lookup): string {
   return `${from} → ${lookup.account(t.transferAccountId)?.name ?? '未知账户'}`
 }
 
-/** 带符号的金额：支出「-」、收入「+」、转账不带符号 */
+/** 带符号的金额：支出「-」、收入「+」，转账和不计收支的不带符号 */
 export function signedAmount(t: Transaction): string {
-  const sign = t.type === 'expense' ? '-' : t.type === 'income' ? '+' : ''
+  const sign = t.excluded ? '' : t.type === 'expense' ? '-' : t.type === 'income' ? '+' : ''
   return sign + formatCents(t.amount)
 }
 
