@@ -3,7 +3,18 @@ import type { Category, Transaction } from '../../types'
 import { detectDelimiter, parseCsv } from './csv'
 import { decodeText } from './decode'
 import { isVoidStatus, parseDateCell, parseDirection, parseMoneyCell, parseTimeCell } from './normalize'
-import { buildMerchantHistory, buildPreview, classify, findDuplicate, matchAccount, summarizePreview } from './preview'
+import {
+  buildMerchantHistory,
+  buildPreview,
+  classify,
+  findDuplicate,
+  findMergeTarget,
+  matchAccount,
+  mergeTransaction,
+  statusOf,
+  summarizePreview,
+  type PreviewItem,
+} from './preview'
 import { similarity } from './similarity'
 import { sniffText } from './sniff'
 import { autoMap, findHeaderRow, mappingProblems, parseRows, toTable, type ParsedRow } from './table'
@@ -280,11 +291,88 @@ describe('buildPreview', () => {
     expect(summarizePreview(items)).toEqual({
       total: 6,
       new: 2,
+      merge: 0,
       duplicate: 2,
       uncategorized: 1,
       ignored: 1,
       selected: 3,
       selectedUncategorized: 1,
     })
+  })
+})
+
+describe('钱包账单与银行流水合并', () => {
+  // 账户 2 是银行卡，3 是支付宝，4 是微信
+  const bankTx = (patch: Partial<Transaction>) => tx({ id: 200, source: 'import', accountId: 2, note: '快捷支付', ...patch })
+  const walletTx = (patch: Partial<Transaction>) => tx({ id: 300, source: 'import', accountId: 3, externalId: 'W1', merchant: '家和鲜包点', ...patch })
+  const labels = { incoming: '招商银行流水', existing: '支付宝账单', accountName: (id: number) => ({ 2: '招行卡', 3: '支付宝', 4: '微信' })[id] }
+
+  it('账户不同时，渠道一致或商户相似才算对得上，渠道冲突的不配对', () => {
+    const alipay = walletTx({})
+    const sourceOf = () => 'alipay' as const
+    // 商户相似
+    expect(findMergeTarget(row({ merchant: '家和鲜包点', note: '快捷支付' }), [alipay], 2, { sourceOf })).toMatchObject({ strong: true })
+    // 银行流水写明支付宝
+    expect(findMergeTarget(row({ note: '支付宝' }), [walletTx({ merchant: '淘宝闪购' })], 2, { sourceOf })).toMatchObject({ strong: true })
+    // 只有金额日期对得上：候选，但不默认合并
+    expect(findMergeTarget(row({ merchant: '上海拉扎斯信息科技有限公司', note: '快捷支付' }), [walletTx({ merchant: '淘宝闪购' })], 2, { sourceOf })).toMatchObject({ strong: false })
+    // 银行流水写的是微信，对不上支付宝账单
+    expect(findMergeTarget(row({ merchant: '微信转账', note: '快捷支付' }), [alipay], 2, { sourceOf })).toBeUndefined()
+    // 都没有单号 / 都有单号 / 日期差 2 天 / 金额不同：不是这类合并
+    expect(findMergeTarget(row({ merchant: '家和鲜包点' }), [bankTx({})], 2)).toBeUndefined()
+    expect(findMergeTarget(row({ merchant: '家和鲜包点', ref: 'W2' }), [alipay], 2)).toBeUndefined()
+    expect(findMergeTarget(row({ merchant: '家和鲜包点', date: '2026-11-02' }), [alipay], 2)).toBeUndefined()
+    expect(findMergeTarget(row({ merchant: '家和鲜包点', amount: 1 }), [alipay], 2)).toBeUndefined()
+  })
+
+  it('钱包账单的付款方式是银行卡时直接算对得上', () => {
+    const bank = bankTx({ merchant: '北京三快在线科技有限公司' })
+    expect(findMergeTarget(row({ ref: 'W9', merchant: '美团', accountName: '招商银行(8027)' }), [bank], 4, { source: 'wechat' })).toMatchObject({ strong: true })
+    expect(findMergeTarget(row({ ref: 'W9', merchant: '美团', accountName: '零钱' }), [bank], 4, { source: 'wechat' })).toMatchObject({ strong: false })
+  })
+
+  it('先导入钱包、再导入银行流水：钱包那条改到银行卡账户，银行流水记进明细', () => {
+    const item: PreviewItem = { key: 0, row: row({ merchant: '家和鲜包点', note: '银联快捷支付' }), accountId: 2, categoryId: 2, selected: true }
+    const next = mergeTransaction(walletTx({ categoryId: 1, note: '消费6元' }), item, labels)
+    expect(next).toMatchObject({ id: 300, accountId: 2, merchant: '家和鲜包点', note: '消费6元', externalId: 'W1', categoryId: 1 })
+    expect(next.merged).toEqual([{ label: '招商银行流水', date: '2026-10-31', merchant: '家和鲜包点', note: '银联快捷支付', account: '招行卡' }])
+  })
+
+  it('先导入银行流水、再导入钱包：保留银行那条的账户，换上钱包的商户和单号', () => {
+    const item: PreviewItem = { key: 0, row: row({ ref: 'W7', merchant: '星巴克', note: '拿铁', time: '08:30', date: '2026-10-30' }), accountId: 4, categoryId: 3, selected: true }
+    const next = mergeTransaction(bankTx({ merchant: '财付通', date: '2026-10-31' }), item, { ...labels, existing: '招商银行流水' })
+    expect(next).toMatchObject({ id: 200, accountId: 2, date: '2026-10-30', time: '08:30', merchant: '星巴克', note: '拿铁', externalId: 'W7', categoryId: 3 })
+    expect(next.merged).toEqual([{ label: '招商银行流水', date: '2026-10-31', merchant: '财付通', note: '快捷支付', account: '招行卡' }])
+  })
+
+  it('钱包提现到银行卡：两边的收入合并成钱包到银行卡的转账', () => {
+    const wallet = walletTx({ type: 'income', merchant: '招商银行', note: '提现-实时提现', categoryId: 8 })
+    const item: PreviewItem = { key: 0, row: row({ type: 'income', merchant: '支付宝支付科技有限公司', note: '网联收款' }), accountId: 2, selected: true }
+    const next = mergeTransaction(wallet, item, labels)
+    expect(next).toMatchObject({ type: 'transfer', accountId: 3, transferAccountId: 2 })
+    expect(next.categoryId).toBeUndefined()
+  })
+
+  it('预览：能合并的默认勾选，已合并过的不再合并，重复导入同一份银行流水算重复', () => {
+    const ctx = { categories, merchantHistory: new Map(), accounts: [{ id: 2, name: '招行卡' }], defaultAccountId: 2, sourceOf: () => 'alipay' as const }
+    const fresh = buildPreview([row({ merchant: '家和鲜包点', note: '快捷支付' })], { ...ctx, existing: [walletTx({})] })
+    expect(statusOf(fresh[0])).toBe('merge')
+    expect(fresh[0].selected).toBe(true)
+    expect(summarizePreview(fresh)).toMatchObject({ merge: 1, selected: 1, selectedUncategorized: 0 })
+
+    const merged = walletTx({ accountId: 2, merged: [{ label: '招商银行流水', date: '2026-10-31', merchant: '家和鲜包点', note: '快捷支付' }] })
+    const again = buildPreview([row({ merchant: '家和鲜包点', note: '快捷支付' })], { ...ctx, existing: [merged] })
+    expect(again[0].mergeWith).toBeUndefined()
+    expect(again[0].duplicateOf).toBe(merged)
+    expect(again[0].selected).toBe(false)
+  })
+
+  it('一笔已有流水只合并一次', () => {
+    const ctx = { categories, merchantHistory: new Map(), accounts: [{ id: 2, name: '招行卡' }], defaultAccountId: 2, sourceOf: () => 'alipay' as const }
+    const items = buildPreview(
+      [row({ merchant: '家和鲜包点', note: '快捷支付' }), row({ merchant: '家和鲜包点', note: '快捷支付' })],
+      { ...ctx, existing: [walletTx({})] },
+    )
+    expect(items.map((i) => i.mergeWith?.id)).toEqual([300, undefined])
   })
 })

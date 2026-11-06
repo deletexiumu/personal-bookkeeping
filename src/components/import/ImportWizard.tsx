@@ -161,7 +161,19 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
       const rows = finishRows(target, parseRows(target.table, columns, sign)).rows
       const refs = rows.flatMap((r) => (r.ref ? [r.ref] : []))
       const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
-      setItems(buildPreview(rows, { categories, rules, merchantHistory, accounts, defaultAccountId, existing }))
+      const batchSource = new Map((await db.importBatches.toArray()).map((b) => [b.id, b.source]))
+      setItems(
+        buildPreview(rows, {
+          categories,
+          rules,
+          merchantHistory,
+          accounts,
+          defaultAccountId,
+          existing,
+          source: target.template?.source ?? source,
+          sourceOf: (t) => (t.importBatchId === undefined ? undefined : batchSource.get(t.importBatchId)),
+        }),
+      )
       setStep('preview')
     } finally {
       setBusy(false)
@@ -196,7 +208,13 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
         const rule = ruleFromRow(item.row, item.categoryId)
         if (rule) await saveRule(db, rule)
       }
-      const id = await commitImport(db, { source: sniff?.template?.source ?? source, fileName, rowCount: items.length + parsed.errors.length, items })
+      const id = await commitImport(db, {
+        source: sniff?.template?.source ?? source,
+        fileName,
+        rowCount: items.length + parsed.errors.length,
+        items,
+        sourceLabel: sniff?.template?.name ?? def.name,
+      })
       setBatch((await db.importBatches.get(id)) ?? null)
       setStep('done')
     } catch (e) {
@@ -276,10 +294,14 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
           {batch.status === 'reverted' ? (
             <h2 className="t-title-m">已撤销本次导入</h2>
           ) : (
-            <h2 className="t-title-m">已入账 {batch.importedCount} 条</h2>
+            <h2 className="t-title-m">
+              已入账 {batch.importedCount} 条{batch.mergedCount ? `，合并 ${batch.mergedCount} 条` : ''}
+            </h2>
           )}
           <p className="t-body-s text-secondary">
-            文件共 {batch.rowCount} 条，跳过 {batch.rowCount - batch.importedCount} 条。可以随时在「导入记录」里整批撤销。
+            文件共 {batch.rowCount} 条，跳过 {batch.rowCount - batch.importedCount - (batch.mergedCount ?? 0)} 条。
+            {batch.mergedCount ? '合并的是钱包账单与银行流水里的同一笔，撤销本次导入不会拆开已合并的流水。' : ''}
+            可以随时在「导入记录」里整批撤销。
           </p>
           <div className="import-actions">
             {batch.status !== 'reverted' && (

@@ -1,5 +1,5 @@
 import { shiftDate } from '../lib/date'
-import { toTransaction, type PreviewItem } from '../lib/import/preview'
+import { mergeTransaction, toTransaction, type PreviewItem } from '../lib/import/preview'
 import type { ImportBatch, ImportSource, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
 
@@ -26,17 +26,29 @@ export interface CommitInput {
   fileName: string
   rowCount: number
   items: PreviewItem[]
+  /** 本次账单的名称，合并时记在明细里，如「招商银行流水」 */
+  sourceLabel?: string
+}
+
+/** 已有流水的来源说明：手记，或导入它的账单（银行流水按文件名里的银行名） */
+export function sourceLabelOf(t: Transaction, batch: ImportBatch | undefined): string {
+  if (t.source === 'manual') return '手记'
+  if (!batch) return '导入流水'
+  const bank = /[\u4e00-\u9fa5]{2,6}银行/.exec(batch.fileName)?.[0]
+  if (bank) return `${bank}流水`
+  return { wechat: '微信账单', alipay: '支付宝账单', douyin: '抖音支付账单', bank: '银行流水', csv: '导入流水', json: '导入流水' }[batch.source]
 }
 
 /**
  * 把勾选的预览行写入账本并记一条导入批次，返回批次 ID。
+ * 能合并的行（mergeWith）不新增，而是更新已有那条（见 mergeTransaction）；已有那条被删了就照常新增。
  * 写入前按交易单号再去重一次：账本里已有同单号的流水（例如预览之后在别处又导入了一份重叠的账单），
  * 或本次勾选里单号重复的行，都不再写入。
  */
 export async function commitImport(db: BookkeepingDB, input: CommitInput): Promise<number> {
   const selected = input.items.filter((i) => i.selected)
   const now = Date.now()
-  return db.transaction('rw', db.transactions, db.importBatches, async () => {
+  return db.transaction('rw', [db.transactions, db.importBatches, db.accounts], async () => {
     const refs = [...new Set(selected.flatMap((i) => (i.row.ref ? [i.row.ref] : [])))]
     const taken = new Set(
       refs.length > 0 ? (await db.transactions.where('externalId').anyOf(refs).toArray()).map((t) => t.externalId) : [],
@@ -48,18 +60,42 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
       taken.add(ref)
       return true
     })
+    const accountNames = new Map((await db.accounts.toArray()).map((a) => [a.id, a.name]))
+    const batchCache = new Map<number, ImportBatch | undefined>()
+    const batchOf = async (id: number | undefined) => {
+      if (id === undefined) return undefined
+      if (!batchCache.has(id)) batchCache.set(id, await db.importBatches.get(id))
+      return batchCache.get(id)
+    }
+    const inserts: PreviewItem[] = []
+    const merges: Transaction[] = []
+    for (const item of chosen) {
+      const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
+      if (!current) {
+        inserts.push(item)
+        continue
+      }
+      const merged = mergeTransaction(current, item, {
+        incoming: input.sourceLabel ?? input.fileName,
+        existing: sourceLabelOf(current, await batchOf(current.importBatchId)),
+        accountName: (id) => accountNames.get(id),
+      })
+      merges.push({ ...merged, updatedAt: now })
+    }
     const batchId = (await db.importBatches.add({
       source: input.source,
       fileName: input.fileName,
       rowCount: input.rowCount,
-      importedCount: chosen.length,
+      importedCount: inserts.length,
+      ...(merges.length > 0 ? { mergedCount: merges.length } : {}),
       createdAt: now,
       status: 'done',
     })) as number
     await db.transactions.bulkAdd(
       // createdAt 递减，让同一时间的行在明细中保持文件里的先后顺序
-      chosen.map((item, i) => ({ ...toTransaction(item), importBatchId: batchId, createdAt: now - i, updatedAt: now })),
+      inserts.map((item, i) => ({ ...toTransaction(item), importBatchId: batchId, createdAt: now - i, updatedAt: now })),
     )
+    if (merges.length > 0) await db.transactions.bulkPut(merges)
     return batchId
   })
 }
