@@ -1,4 +1,4 @@
-import { Braces, Camera, Landmark, MessageCircle, Sheet, Wallet, type LucideIcon } from 'lucide-react'
+import { Braces, Camera, Landmark, MessageCircle, Music2, Sheet, Wallet, type LucideIcon } from 'lucide-react'
 import type { ImportSource, Tone } from '../../types'
 
 export interface SourceDef {
@@ -11,6 +11,8 @@ export interface SourceDef {
   upcoming?: string
   /** 导出教程 */
   guide: string[]
+  /** 不单独显示卡片（自动识别，导入记录里显示名称和图标） */
+  hidden?: boolean
 }
 
 /** 导入中心的来源卡片（M04），顺序与设计稿一致 */
@@ -34,18 +36,23 @@ export const SOURCES: SourceDef[] = [
   {
     id: 'bank',
     name: '银行卡账单',
-    hint: 'CSV 对账单',
+    hint: 'CSV / PDF 流水',
     icon: Landmark,
     tone: 'purple',
-    guide: ['在网银或银行 App 的「交易明细」里选择时间范围导出 CSV', '下载后在这里选择文件，按列确认字段映射即可', 'PDF 对账单暂不支持，可先在网银导出 CSV'],
+    guide: [
+      '招商银行「交易流水」PDF、中信银行「个人账户明细证明书」PDF：在银行 App 里开具流水证明（用途选个人对账），下载后直接选择，自动识别',
+      '其他银行可在网银「交易明细」里导出 CSV，按列确认字段映射即可；文字可以选中的 PDF 也可以试试',
+      '扫描件、加密 PDF 暂不支持',
+    ],
   },
   {
     id: 'csv',
     name: '通用表格',
-    hint: '任意 CSV / TSV',
+    hint: '任意 CSV / TSV，含抖音支付',
     icon: Sheet,
     tone: 'orange',
-    guide: ['表格至少要有日期和金额两列，可以有收支方向、商户、备注、分类、账户等列', 'Excel 文件请先「另存为」CSV（UTF-8 或 GBK 编码都可以）', '金额可以带正负号，也可以分成支出、收入两列'],
+    guide: [
+      '抖音支付账单：在抖音钱包的账单里开具交易流水，下载的 CSV 直接选择即可自动识别','表格至少要有日期和金额两列，可以有收支方向、商户、备注、分类、账户等列', 'Excel 文件请先「另存为」CSV（UTF-8 或 GBK 编码都可以）', '金额可以带正负号，也可以分成支出、收入两列'],
   },
   {
     id: 'ocr',
@@ -55,6 +62,15 @@ export const SOURCES: SourceDef[] = [
     tone: 'cyan',
     upcoming: '规划中',
     guide: ['识别支付截图和小票上的金额、商户和时间，识别方案确定后提供'],
+  },
+  {
+    id: 'douyin',
+    name: '抖音支付',
+    hint: '交易流水 CSV',
+    icon: Music2,
+    tone: 'gray',
+    hidden: true,
+    guide: ['在抖音钱包的账单里开具交易流水，下载 CSV 后在「通用表格」里选择文件'],
   },
   {
     id: 'json',

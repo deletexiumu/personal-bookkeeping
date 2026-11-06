@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Category } from '../../types'
-import { buildPreview, matchAccount } from './preview'
+import { accountByCardTail, buildPreview, cardTail, matchAccount } from './preview'
 import { sniffFile, sniffText } from './sniff'
 import { parseRows } from './table'
 import { makeXlsx, makeZip } from './testZip'
@@ -137,7 +137,7 @@ describe('微信账单模板', () => {
     expect(sniffText(new TextEncoder().encode(csv)).template?.id).toBe('wechat')
   })
 
-  it('零钱对应微信账户，银行卡按名称或默认账户', async () => {
+  it('零钱对应微信账户，银行卡按银行名、名称或默认账户', async () => {
     const sniff = await sniffFile(await makeXlsx(WECHAT_ROWS))
     const items = buildPreview(parseRows(sniff.table, sniff.mapping).rows, {
       categories,
@@ -146,7 +146,8 @@ describe('微信账单模板', () => {
       defaultAccountId: 4,
       existing: [],
     })
-    expect(items.map((i) => i.accountId)).toEqual([4, 4, 4, 4, 4])
+    // 「招商银行信用卡(1234)」「招商银行(1234)」按银行名对应到唯一的招商账户「招商信用卡」
+    expect(items.map((i) => i.accountId)).toEqual([4, 2, 4, 2, 4])
     expect(matchAccount('招商银行信用卡(1234)', [...accounts, { id: 5, name: '招商银行信用卡', type: 'credit' }], 4)).toBe(5)
     expect(items.map((i) => i.selected)).toEqual([true, true, true, false, true])
     // 交易类型「微信红包」用于分类：红包收入归为其他收入
@@ -199,5 +200,53 @@ describe('支付宝账单模板', () => {
       ['expense', 4500, undefined],
       ['income', 10000, '不计收支'],
     ])
+  })
+})
+
+describe('抖音支付账单模板', () => {
+  /** 按抖音支付「交易流水」CSV 的版式构造（UTF-8 BOM，前若干行说明，数据为虚构） */
+  const DOUYIN_CSV = [
+    '\ufeff抖音支付交易流水',
+    '账户,张三',
+    '交易时间段,2026-01-01 00:00:00 至 2026-06-30 23:59:59',
+    '交易笔数,4',
+    '',
+    '交易时间,收/支/其他,金额（元）,收/付款方式,交易单号,交易对方,商家单号',
+    '2026-06-30 14:27:02,支出,108.00,抖音月付,2105000000000000001,抖音电商,ONP0001',
+    '2026-06-20 03:13:36,支出,15.00,招商银行借记卡（5566）,2100000000000000002,Apple 服务,MMQH04',
+    '2026-05-29 22:46:44,收入,32.90,退款,2105000000000000003,抖音生活服务,ONP0003',
+    '2026-05-01 10:00:00,其他,50.00,抖音月付,2105000000000000004,抖音月付,ONP0004',
+  ].join('\r\n')
+
+  it('命中模板：收/支/其他判断方向，「其他」不计收支，退款行的付款方式不当账户', () => {
+    const sniff = sniffText(new TextEncoder().encode(DOUYIN_CSV))
+    expect(sniff.template?.id).toBe('douyin')
+    expect(sniff.template?.source).toBe('douyin')
+    const { rows, errors } = parseRows(sniff.table, sniff.mapping)
+    expect(errors).toEqual([])
+    expect(rows.map((r) => [r.date, r.time, r.type, r.amount, r.merchant, r.accountName, r.ref, r.skipReason])).toEqual([
+      ['2026-06-30', '14:27', 'expense', 10800, '抖音电商', '抖音月付', '2105000000000000001', undefined],
+      ['2026-06-20', '03:13', 'expense', 1500, 'Apple 服务', '招商银行借记卡（5566）', '2100000000000000002', undefined],
+      ['2026-05-29', '22:46', 'income', 3290, '抖音生活服务', undefined, '2105000000000000003', undefined],
+      ['2026-05-01', '10:00', 'income', 5000, '抖音月付', '抖音月付', '2105000000000000004', '不计收支'],
+    ])
+  })
+
+  it('付款方式按卡号尾号对应账户', () => {
+    const list = [
+      { id: 7, name: '抖音月付', type: 'credit' as const },
+      { id: 8, name: '工资卡', type: 'debit' as const, note: '招行 尾号5566' },
+    ]
+    expect(cardTail('招商银行借记卡（5566）')).toBe('5566')
+    expect(cardTail('招商银行储蓄卡(5566)')).toBe('5566')
+    expect(cardTail('6214000000005566')).toBe('5566')
+    expect(cardTail('6214 **** 5566')).toBe('5566')
+    expect(cardTail('零钱')).toBeUndefined()
+    expect(accountByCardTail('招商银行借记卡（5566）', list)).toBe(8)
+    expect(matchAccount('招商银行借记卡（5566）', list, 7)).toBe(8)
+    expect(matchAccount('抖音月付', list, 1)).toBe(7)
+    // 银行名对上、卡种冲突时不采用
+    expect(matchAccount('招商银行储蓄卡(5678)', [{ id: 2, name: '招商信用卡', type: 'credit' }], 9)).toBe(9)
+    expect(matchAccount('广发银行信用卡(2229)', [{ id: 3, name: '广发卡', type: 'credit' }], 9)).toBe(3)
   })
 })

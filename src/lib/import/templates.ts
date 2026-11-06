@@ -4,14 +4,27 @@ import type { ColumnMapping } from './table'
 
 /** 内置账单模板：命中后跳过字段映射，直接进入预览 */
 export interface BuiltinTemplate {
-  id: 'wechat' | 'alipay' | 'alipay-legacy'
+  id: 'wechat' | 'alipay' | 'alipay-legacy' | 'douyin' | 'cmb' | 'citic'
   name: string
   source: ImportSource
   /** 默认入账账户的类型 */
   accountType: AccountType
+  /** 默认入账账户名里含这些字时优先（如「抖音」） */
+  accountHint?: RegExp
   /** 表头必须包含的列 */
   required: string[]
   columns: Record<string, FieldKey>
+  /** 按列清洗单元格（键为去掉空白的表头） */
+  clean?: Record<string, (value: string) => string>
+  /** 银行流水：对方是本人（户名相同）的标为「本人账户互转」，默认不入账 */
+  selfTransfer?: boolean
+}
+
+/** 银行流水的对手信息常是「户名 + 账号」，去掉末尾账号；只有账号时清空 */
+export function stripAccountNo(value: string): string {
+  const text = value.trim()
+  if (/^\d{6,}$/.test(text)) return ''
+  return text.replace(/\s+\d{6,}$/, '').trim()
 }
 
 export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
@@ -73,6 +86,61 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       备注: 'note',
       资金状态: 'direction',
     },
+  },
+  {
+    id: 'douyin',
+    name: '抖音支付账单',
+    source: 'douyin',
+    accountType: 'other',
+    accountHint: /抖音/,
+    required: ['交易时间', '收/支/其他', '交易单号', '交易对方'],
+    columns: {
+      交易时间: 'date',
+      '收/支/其他': 'direction',
+      '金额（元）': 'amount',
+      '金额(元)': 'amount',
+      '收/付款方式': 'account',
+      交易单号: 'ref',
+      交易对方: 'merchant',
+      商品: 'note',
+      备注: 'note',
+    },
+    // 退款行的「收/付款方式」写的是「退款」，不是账户
+    clean: { '收/付款方式': (v) => (v.trim() === '退款' ? '' : v) },
+  },
+  {
+    // 招商银行 App「交易流水」PDF
+    id: 'cmb',
+    name: '招商银行流水',
+    source: 'bank',
+    accountType: 'debit',
+    accountHint: /招商|招行/,
+    required: ['记账日期', '交易金额', '交易摘要', '对手信息'],
+    columns: {
+      记账日期: 'date',
+      交易金额: 'amount',
+      交易摘要: 'note',
+      对手信息: 'merchant',
+    },
+    clean: { 对手信息: stripAccountNo },
+    selfTransfer: true,
+  },
+  {
+    // 中信银行「个人账户明细证明书」PDF
+    id: 'citic',
+    name: '中信银行流水',
+    source: 'bank',
+    accountType: 'debit',
+    accountHint: /中信/,
+    required: ['交易日期', '收入金额', '支出金额', '交易摘要', '对方户名'],
+    columns: {
+      交易日期: 'date',
+      收入金额: 'income',
+      支出金额: 'expense',
+      交易摘要: 'note',
+      对方户名: 'merchant',
+    },
+    selfTransfer: true,
   },
 ]
 

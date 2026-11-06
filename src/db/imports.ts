@@ -28,11 +28,26 @@ export interface CommitInput {
   items: PreviewItem[]
 }
 
-/** 把勾选的预览行写入账本并记一条导入批次，返回批次 ID */
+/**
+ * 把勾选的预览行写入账本并记一条导入批次，返回批次 ID。
+ * 写入前按交易单号再去重一次：账本里已有同单号的流水（例如预览之后在别处又导入了一份重叠的账单），
+ * 或本次勾选里单号重复的行，都不再写入。
+ */
 export async function commitImport(db: BookkeepingDB, input: CommitInput): Promise<number> {
-  const chosen = input.items.filter((i) => i.selected)
+  const selected = input.items.filter((i) => i.selected)
   const now = Date.now()
   return db.transaction('rw', db.transactions, db.importBatches, async () => {
+    const refs = [...new Set(selected.flatMap((i) => (i.row.ref ? [i.row.ref] : [])))]
+    const taken = new Set(
+      refs.length > 0 ? (await db.transactions.where('externalId').anyOf(refs).toArray()).map((t) => t.externalId) : [],
+    )
+    const chosen = selected.filter((item) => {
+      const ref = item.row.ref
+      if (!ref) return true
+      if (taken.has(ref)) return false
+      taken.add(ref)
+      return true
+    })
     const batchId = (await db.importBatches.add({
       source: input.source,
       fileName: input.fileName,
