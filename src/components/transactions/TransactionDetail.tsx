@@ -217,9 +217,9 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
           <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
         {!isTransfer && (
-          <label className="check-field t-body-s" title="本人账户之间挪钱等：只保留明细，不计入收入、支出、预算、分析和账户余额">
+          <label className="check-field t-body-s" title="本人账户之间挪钱等：不计入收入、支出、预算和分析；钱包账单导入的也不计入账户余额">
             <input type="checkbox" checked={excluded} onChange={(e) => setExcluded(e.target.checked)} />
-            不计收支（本人账户间挪钱等，只保留明细）
+            不计收支（本人账户间挪钱等）
           </label>
         )}
         <div className="field">

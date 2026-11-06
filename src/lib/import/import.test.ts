@@ -533,6 +533,20 @@ describe('本人账户间挪钱', () => {
     expect(findTransferPair(wechatRow, [{ ...bank, note: '工资' }], 4, 'wechat')).toBeUndefined()
   })
 
+  it('先导入微信账单（提现记为不计收支），再导入银行流水的财付通入账：合并成转账；手记不参与', () => {
+    const wechat = self({ accountId: 4, type: 'income', amount: 50051, externalId: 'W5', merchant: '招商银行(1234)', note: '服务费¥0.51' })
+    const bankRow = row({ type: 'income', amount: 50000, note: '财付通快捷支付' })
+    const items = buildPreview([bankRow], { ...ctx([wechat], 2), sourceOf: () => 'wechat' as const })
+    expect(items[0]).toMatchObject({ transferPair: true, selected: true, mergeAsTransfer: { from: 4, to: 2 } })
+    expect(statusOf(items[0])).toBe('merge')
+    // 钱包来源对不上不配对
+    expect(findTransferPair(bankRow, [wechat], 2, undefined, undefined, () => 'alipay')).toBeUndefined()
+    // 手记写了「微信」也不会被改成转账
+    const manual = tx({ id: 700, source: 'manual', accountId: 2, type: 'expense', amount: 20000, note: '微信 请客', categoryId: 3 })
+    const topUp = row({ type: 'income', amount: 20000, ref: 'W6', merchant: '招商银行(1234)', kind: '零钱充值', skipReason: '不计收支' })
+    expect(findTransferPair(topUp, [manual], 4, 'wechat')).toBeUndefined()
+  })
+
   it('银行流水按金额正负判断方向，摘要里有「提现」也不改', () => {
     const out = self({ accountId: 5, type: 'income', amount: 1000, note: '证券提现' })
     const inRow = row({ type: 'expense', amount: 1000, note: '银证转账', skipReason: '本人账户互转' })

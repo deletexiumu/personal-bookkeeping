@@ -73,8 +73,9 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     const fees: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'importBatchId'>[] = []
     for (const item of chosen) {
       const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
+      const currentSource = (await batchOf(current?.importBatchId))?.source
       // 预览之后已有那条被删了，或在别处已经合并过：照常新增
-      if (!current || !stillMergeable(current, item, input.source)) {
+      if (!current || !stillMergeable(current, item, input.source, () => currentSource)) {
         inserts.push(item)
         continue
       }

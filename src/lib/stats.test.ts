@@ -35,8 +35,10 @@ describe('不计收支', () => {
     expect(expenseByCategory(rows).total).toBe(1000)
   })
 
-  it('不计入账户余额，可以按「不计收支」搜索', () => {
-    expect(computeBalances([{ id: 1, name: '支付宝', initialBalance: 0 }], rows).get(1)).toBe(-1000)
+  it('钱包导入的不计入账户余额，银行流水和手记照常计入；可以按「不计收支」搜索', () => {
+    expect(computeBalances([{ id: 1, name: '支付宝', initialBalance: 0 }], rows).get(1)).toBe(-1000 + 5000 - 300)
+    const wallet = rows.map((t) => (t.excluded ? { ...t, externalId: `W${t.id}` } : t))
+    expect(computeBalances([{ id: 1, name: '支付宝', initialBalance: 0 }], wallet).get(1)).toBe(-1000)
     expect(filterTransactions(rows, { query: '不计收支' }).map((t) => t.id)).toEqual([2, 3])
   })
 })

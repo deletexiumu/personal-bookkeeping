@@ -161,8 +161,13 @@ export function canMerge(t: Transaction, row: ParsedRow): boolean {
 }
 
 /** 保存时再确认一次：已有那条还能按预览时的方式合并 */
-export function stillMergeable(t: Transaction, item: PreviewItem, source?: ImportSource): boolean {
-  if (item.transferPair) return findTransferPair(item.row, [t], item.accountId, source) === t
+export function stillMergeable(
+  t: Transaction,
+  item: PreviewItem,
+  source?: ImportSource,
+  sourceOf?: (t: Transaction) => ImportSource | undefined,
+): boolean {
+  if (item.transferPair) return findTransferPair(item.row, [t], item.accountId, source, undefined, sourceOf) === t
   return canMerge(t, item.row)
 }
 
@@ -198,10 +203,12 @@ export function transferFee(outAmount: number, inAmount: number, ...texts: (stri
 }
 
 /**
- * 本人账户间挪钱的另一边：这一行是不计收支 / 本人账户互转，已有那条在另一个账户上、资金流向相反
- * （提现按流出算）、金额相同（或转出比转入多一笔提现手续费），日期相差不超过 2 天，并且满足其一：
- * - 已有那条标为不计收支；
- * - 这一行来自钱包（有交易单号），已有那条是银行流水里写明这个钱包渠道（财付通、支付宝等）的收支。
+ * 本人账户间挪钱的另一边：已有那条在另一个账户上、资金流向相反（钱包提现按流出算）、金额相同
+ * （或转出比转入多一笔提现手续费），日期相差不超过 2 天，并且满足其一：
+ * - 这一行是不计收支 / 本人账户互转，已有那条也标为不计收支；
+ * - 这一行是钱包里的不计收支，已有那条是导入的银行流水，写明了这个钱包渠道（财付通、支付宝等）；
+ * - 这一行是银行流水、写明了钱包渠道，已有那条是这个钱包导入的、标为不计收支的流水（先导入钱包账单的情况）。
+ * 手记不参与。
  * 合并成一笔从转出那边到转入那边的转账。有多个时取日期最近的；exclude 里的流水（已被认领）不参与。
  */
 export function findTransferPair(
@@ -210,17 +217,23 @@ export function findTransferPair(
   accountId: number,
   source?: ImportSource,
   exclude?: ReadonlySet<Transaction>,
+  sourceOf?: (t: Transaction) => ImportSource | undefined,
 ): Transaction | undefined {
-  if (!isNeutral(row)) return undefined
+  const neutral = isNeutral(row)
+  if (row.skipReason && !neutral) return undefined
+  const rowChannel = row.ref ? undefined : channelOf(`${row.merchant ?? ''} ${row.note ?? ''}`)
+  if (!neutral && !rowChannel) return undefined
   const rowFlow = flowOf(row, !!row.ref)
   let best: Transaction | undefined
   let bestDiff = Infinity
   for (const t of candidates) {
-    if (exclude?.has(t) || t.type === 'transfer' || t.accountId === accountId || t.merged?.length) continue
+    if (exclude?.has(t) || t.type === 'transfer' || t.source === 'manual' || t.accountId === accountId || t.merged?.length) continue
     const tFlow = flowOf(t, !!t.externalId)
     if (tFlow === rowFlow) continue
-    const viaChannel = !!row.ref && !t.externalId && !!source && channelOf(`${t.merchant ?? ''} ${t.note ?? ''}`) === source
-    if (!t.excluded && !viaChannel) continue
+    const bothNeutral = neutral && !!t.excluded
+    const walletRow = neutral && !!row.ref && !t.externalId && !!source && channelOf(`${t.merchant ?? ''} ${t.note ?? ''}`) === source
+    const bankRow = !!rowChannel && !!t.excluded && !!t.externalId && sourceOf?.(t) === rowChannel
+    if (!bothNeutral && !walletRow && !bankRow) continue
     const [out, inn] = rowFlow === 'expense' ? [row, t] : [t, row]
     if (transferFee(out.amount, inn.amount, row.note, t.note) === undefined) continue
     const diff = dayDiff(t.date, row.date)
@@ -584,7 +597,7 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
   // 本人账户间挪钱：与另一边已入账的不计收支流水合并成转账
   for (const item of items) {
     if (item.duplicateOf) continue
-    const pair = findTransferPair(item.row, ctx.existing, item.accountId, ctx.source, claimed)
+    const pair = findTransferPair(item.row, ctx.existing, item.accountId, ctx.source, claimed, ctx.sourceOf)
     if (!pair) continue
     item.mergeWith = pair
     item.transferPair = true

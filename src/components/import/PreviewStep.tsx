@@ -224,7 +224,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {row.merchant && row.note && ` · ${row.note}`}
                   {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
-                  {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，只保留明细，不计入收支和余额'}
+                  {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，不计入收支统计'}
                   {((item.mergeWith && status !== 'ignored') || item.declinedMerge) && (
                     <>
                       {' · '}

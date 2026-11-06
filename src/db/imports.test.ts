@@ -90,6 +90,7 @@ describe('导入批次', () => {
       { id: 4, name: '微信', type: 'wechat' },
     ])
     const bankId = await addTransaction(db, { type: 'income', amount: 50606, accountId: 2, date: '2026-10-31', note: '网联收款', excluded: true })
+    await db.transactions.update(bankId, { source: 'import' })
     const bank = (await db.transactions.get(bankId))!
     const wechatRow: PreviewItem = {
       key: 0,
