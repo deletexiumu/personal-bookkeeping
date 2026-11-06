@@ -1,5 +1,5 @@
 import { shiftDate } from '../lib/date'
-import { mergeTransaction, toTransaction, type PreviewItem } from '../lib/import/preview'
+import { canMerge, mergeTransaction, toTransaction, type PreviewItem } from '../lib/import/preview'
 import type { ImportBatch, ImportSource, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
 
@@ -34,14 +34,15 @@ export interface CommitInput {
 export function sourceLabelOf(t: Transaction, batch: ImportBatch | undefined): string {
   if (t.source === 'manual') return '手记'
   if (!batch) return '导入流水'
-  const bank = /[\u4e00-\u9fa5]{2,6}银行/.exec(batch.fileName)?.[0]
-  if (bank) return `${bank}流水`
-  return { wechat: '微信账单', alipay: '支付宝账单', douyin: '抖音支付账单', bank: '银行流水', csv: '导入流水', json: '导入流水' }[batch.source]
+  const named = { wechat: '微信账单', alipay: '支付宝账单', douyin: '抖音支付账单', bank: '银行流水', csv: '导入流水', json: '导入流水' }[batch.source]
+  if (batch.source !== 'bank' && batch.source !== 'csv') return named
+  const bank = /(?:招商|中信|工商|建设|农业|交通|中国|邮储|浦发|广发|平安|兴业|民生|光大|华夏)银行/.exec(batch.fileName)?.[0]
+  return bank ? `${bank}流水` : named
 }
 
 /**
  * 把勾选的预览行写入账本并记一条导入批次，返回批次 ID。
- * 能合并的行（mergeWith）不新增，而是更新已有那条（见 mergeTransaction）；已有那条被删了就照常新增。
+ * 能合并的行（mergeWith）不新增，而是更新已有那条（见 mergeTransaction）；已有那条被删了或已不能合并时照常新增。
  * 写入前按交易单号再去重一次：账本里已有同单号的流水（例如预览之后在别处又导入了一份重叠的账单），
  * 或本次勾选里单号重复的行，都不再写入。
  */
@@ -71,7 +72,8 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     const merges: Transaction[] = []
     for (const item of chosen) {
       const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
-      if (!current) {
+      // 预览之后已有那条被删了，或在别处已经合并过：照常新增
+      if (!current || !canMerge(current, item.row)) {
         inserts.push(item)
         continue
       }

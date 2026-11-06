@@ -1,6 +1,6 @@
 import { FileCheck2 } from 'lucide-react'
 import { useState } from 'react'
-import { mergesIntoTransfer, statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
+import { statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
 import { ruleFromRow } from '../../lib/import/rules'
 import { normalizeText } from '../../lib/import/similarity'
 import type { RowError } from '../../lib/import/table'
@@ -51,7 +51,7 @@ function duplicateText(item: PreviewItem): string {
 
 function mergeText(item: PreviewItem): string {
   if (!item.mergeWith) return ''
-  return `与 ${describe(item.mergeWith)}是同一笔，${mergesIntoTransfer(item) ? '合并为本人账户间的转账' : '合并为一条'}`
+  return `与 ${describe(item.mergeWith)}是同一笔，${item.mergeAsTransfer ? '合并为本人账户间的转账' : '合并为一条'}`
 }
 
 /** 第 4 步：预览确认（M05）。可勾选、改分类；疑似重复和忽略的行默认不勾选。 */
@@ -91,6 +91,15 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
         return i
       }),
     )
+  }
+  /** 合并候选改为单独入账，或改回合并 */
+  function toggleMerge(item: PreviewItem) {
+    if (item.mergeWith) {
+      const { mergeWith, weakMerge, mergeAsTransfer } = item
+      patch(item.key, { mergeWith: undefined, weakMerge: undefined, mergeAsTransfer: undefined, declinedMerge: { mergeWith, weakMerge, mergeAsTransfer }, selected: true })
+    } else if (item.declinedMerge) {
+      patch(item.key, { ...item.declinedMerge, declinedMerge: undefined, selected: true })
+    }
   }
   const rememberCount = items.filter((i) => i.remember && i.selected).length
 
@@ -208,11 +217,19 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {row.merchant && row.note && ` · ${row.note}`}
                   {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
+                  {status !== 'ignored' && (item.mergeWith || item.declinedMerge) && (
+                    <>
+                      {' · '}
+                      <button type="button" className="link-button" onClick={() => toggleMerge(item)}>
+                        {item.mergeWith ? '不合并，单独入账' : '改回合并'}
+                      </button>
+                    </>
+                  )}
                 </span>
               </div>
               <span className="preview-category">
-              {item.mergeWith ? (
-                <span className="t-caption text-tertiary">沿用已有分类</span>
+              {status === 'merge' && (item.mergeAsTransfer || item.mergeWith?.categoryId !== undefined) ? (
+                <span className="t-caption text-tertiary">{item.mergeAsTransfer ? '转账不分类' : '沿用已有分类'}</span>
               ) : (
               <select
                 className="input"
@@ -228,7 +245,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                 ))}
               </select>
               )}
-              {!item.mergeWith && item.categorySource === 'manual' && item.categoryId !== undefined && ruleFromRow(row, item.categoryId) && (
+              {status !== 'merge' && item.categorySource === 'manual' && item.categoryId !== undefined && ruleFromRow(row, item.categoryId) && (
                 <label className="check-field preview-remember t-caption" title={`以后${row.merchant ? '商户' : '备注'}包含「${row.merchant ?? row.note}」时自动归为${category?.name}`}>
                   <input type="checkbox" checked={!!item.remember} onChange={(e) => setRemember(item, e.target.checked)} />
                   记住

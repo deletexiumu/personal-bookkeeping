@@ -1,4 +1,4 @@
-import type { Account, Category, CategoryRule, ImportSource, MergedEntry, Transaction } from '../../types'
+import type { Account, AccountType, Category, CategoryRule, ImportSource, MergedEntry, Transaction } from '../../types'
 import { KEYWORD_DICTIONARY } from './keywords'
 import { findRule } from './rules'
 import { CATEGORY_ALIASES } from './templates'
@@ -23,8 +23,12 @@ export interface PreviewItem {
   duplicateOf?: Transaction | 'batch'
   /** 与已有流水是同一笔钱（钱包账单 × 银行流水 / 手记）：勾选后合并进这条，不新增 */
   mergeWith?: Transaction
-  /** 只有金额和日期对得上（账户、渠道、商户都没对上）：显示为疑似重复，默认不勾选 */
+  /** 只有金额和日期对得上（或是手记）：显示为疑似重复，默认不勾选，勾选后合并 */
   weakMerge?: boolean
+  /** 合并后是本人账户间的转账（钱包提现到银行卡）：从钱包账户转到银行账户 */
+  mergeAsTransfer?: { from: number; to: number }
+  /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
+  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer'>
   selected: boolean
 }
 
@@ -43,33 +47,48 @@ function dayDiff(a: string, b: string): number {
   return Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000
 }
 
-/** 已合并进 t 的明细里有这一行（重复导入同一份银行流水） */
-function mergedContains(t: Transaction, row: ParsedRow): boolean {
-  if (!t.merged?.length || t.amount !== row.amount) return false
+/** 已经合并过银行流水的流水 */
+function hasBankEntry(t: Transaction): boolean {
+  return !!t.merged?.some((m) => m.bank)
+}
+
+/**
+ * 已合并进 t 的银行流水与这一行是同一笔：重复导入同一份银行流水（明细完全相同），
+ * 或同一张卡、日期相差不超过 1 天（同一份流水换了格式再导入，摘要写法可能不同）。
+ */
+function mergedContains(t: Transaction, row: ParsedRow, accountId?: number): boolean {
+  if (row.ref || !hasBankEntry(t) || t.amount !== row.amount) return false
   // 合并时可能改成了转账（钱包提现到银行卡），类型不再一致
   if (t.type !== 'transfer' && t.type !== row.type) return false
-  return t.merged.some(
+  const sameCard = accountId !== undefined && (t.accountId === accountId || t.transferAccountId === accountId)
+  return t.merged!.some(
     (m) =>
-      m.date === row.date &&
-      normalizeText(m.merchant) === normalizeText(row.merchant) &&
-      normalizeText(m.note) === normalizeText(row.note),
+      m.bank &&
+      ((m.date === row.date &&
+        normalizeText(m.merchant) === normalizeText(row.merchant) &&
+        normalizeText(m.note) === normalizeText(row.note)) ||
+        (sameCard && dayDiff(m.date, row.date) <= 1)),
   )
 }
 
 /**
  * 疑似重复：类型和金额相同，并且满足其一：
- * - 已合并进这条流水的明细里有同一行（重复导入同一份银行流水）；
+ * - 已合并进这条流水的银行流水与这一行是同一笔（见 mergedContains）；
  * - 同一天，且已有流水是手记的（手记备注往往和账单商户写法不同）或任一方没有商户 / 备注；
  * - 日期相差不超过 1 天，且商户 / 备注相似（相似度 ≥ 0.5）。
- * 双方都有交易单号时只按单号精确比对。exclude 里的流水（已被本批次前面的行认领）不再参与比对，
- * 保证一笔已有流水只对应一行。钱包账单与银行流水的同一笔见 findMergeTarget。
+ * 双方都有交易单号时只按单号精确比对；一方有、一方没有的是钱包账单与银行流水（或手记），见 findMergeTarget。
+ * exclude 里的流水（已被本批次前面的行认领）不再参与比对，保证一笔已有流水只对应一行。
  */
-export function findDuplicate(row: ParsedRow, candidates: Transaction[], exclude?: ReadonlySet<Transaction>): Transaction | undefined {
+export function findDuplicate(
+  row: ParsedRow,
+  candidates: Transaction[],
+  exclude?: ReadonlySet<Transaction>,
+  accountId?: number,
+): Transaction | undefined {
   return candidates.find((t) => {
     if (exclude?.has(t)) return false
-    if (mergedContains(t, row)) return true
+    if (mergedContains(t, row, accountId)) return true
     if (row.ref && t.externalId) return row.ref === t.externalId
-    // 一方有单号、一方没有：是钱包账单与银行流水（或手记）的同一笔，按合并处理
     if (!row.ref !== !t.externalId) return false
     if (t.type !== row.type || t.amount !== row.amount) return false
     const diff = dayDiff(t.date, row.date)
@@ -105,29 +124,41 @@ const SELF_TRANSFER = /提现|转出到银行卡|转出到余额|余利宝转出
 /** 比对商户前去掉公司名里的通用字，「成都西山居世游科技有限公司」与「西山居游戏」才比得上 */
 const companyText = (text: string | undefined) => text?.replace(/有限责任公司|有限公司|股份|集团|科技|信息|网络|技术/g, '')
 
+const isCard = (type: AccountType | undefined) => type === 'debit' || type === 'credit'
+const isWalletAccount = (type: AccountType | undefined) => type === 'wechat' || type === 'alipay'
+
 export interface MergeContext {
   /** 本次导入的账单来源 */
   source?: ImportSource
   /** 已有流水来自哪种账单（按导入批次）；用来排除渠道对不上的配对 */
   sourceOf?: (t: Transaction) => ImportSource | undefined
+  /** 账户 ID → 账户类型；两边都落在银行卡账户却不是同一张卡时不配对 */
+  accountTypeOf?: (id: number) => AccountType | undefined
 }
 
 export interface MergeMatch {
   tx: Transaction
-  /** 账户、渠道或商户对得上；false 表示只有金额和日期对得上 */
+  /** 账户、渠道或商户对得上；false 表示只有金额和日期对得上，或已有那条是手记 */
   strong: boolean
+}
+
+/** 已有流水 t 还能不能和这一行合并：一方有单号、一方没有，类型和金额相同，t 还没合并过银行流水 */
+export function canMerge(t: Transaction, row: ParsedRow): boolean {
+  if (hasBankEntry(t) || !row.ref === !t.externalId) return false
+  return t.type !== 'transfer' && t.type === row.type && t.amount === row.amount
 }
 
 /**
  * 钱包账单与银行流水里的同一笔钱：用银行卡付款时，同一笔钱会同时出现在两份账单里。
- * 条件：一方有交易单号（钱包）、另一方没有（银行流水或手记），类型和金额相同，日期相差不超过 1 天，
- * 银行流水里写明的渠道（财付通、支付宝等）与钱包来源不冲突。以下任一成立时算对得上（strong）：
+ * 条件：canMerge，日期相差不超过 1 天；银行流水里写明的渠道（财付通、支付宝等）与钱包来源不冲突；
+ * 钱包那一侧落在某张银行卡账户上时，必须就是银行流水那张卡。以下任一成立时算对得上（strong）：
  * - 入账账户相同（钱包付款方式已对应到这张卡）；
  * - 钱包账单的付款方式是银行卡；
  * - 银行流水写明的渠道就是这个钱包；
  * - 商户相似（相似度 ≥ 0.4）。
- * 都不成立时仍作为候选返回（strong 为 false），由用户决定是否合并。已经合并过的流水不再参与。
- * 一行有多个候选时取最像的一个；exclude 里的流水（已被本批次前面的行认领）不参与。
+ * 都不成立时仍作为候选返回（strong 为 false），由用户决定是否合并。
+ * 已有那条是手记时，只有同一天或商户相似才作为候选，而且一律不默认合并，免得改动手记的内容。
+ * 一行有多个候选时取最像的一个；exclude 里的流水（已被认领）不参与；strongOnly 时只找对得上的。
  */
 export function findMergeTarget(
   row: ParsedRow,
@@ -135,37 +166,61 @@ export function findMergeTarget(
   accountId: number,
   ctx: MergeContext = {},
   exclude?: ReadonlySet<Transaction>,
+  strongOnly = false,
 ): MergeMatch | undefined {
   let best: MergeMatch | undefined
   let bestScore = -1
   for (const t of candidates) {
-    if (exclude?.has(t) || t.merged?.length) continue
-    if (!row.ref === !t.externalId) continue
-    if (t.type === 'transfer' || t.type !== row.type || t.amount !== row.amount) continue
+    if (exclude?.has(t) || !canMerge(t, row)) continue
     const diff = dayDiff(t.date, row.date)
     if (diff > 1) continue
-    const walletSource = row.ref ? ctx.source : ctx.sourceOf?.(t)
-    const wallet = walletSource && WALLETS.has(walletSource) ? walletSource : undefined
     const plain = row.ref ? { merchant: t.merchant, note: t.note } : { merchant: row.merchant, note: row.note }
     const walletText = row.ref ? { merchant: row.merchant, note: row.note } : { merchant: t.merchant, note: t.note }
-    const channel = channelOf(`${plain.merchant ?? ''} ${plain.note ?? ''}`)
-    if (channel && wallet && channel !== wallet) continue
-    const sameAccount = t.accountId === accountId
-    const cardPaid = !!row.ref && !!row.accountName && CARD_PAID.test(row.accountName)
-    const viaChannel = !!channel && channel === wallet
-    const similar =
+    const similarity04 =
       Math.max(
         similarity(companyText(plain.merchant), companyText(walletText.merchant)),
         similarity(companyText(plain.merchant), companyText(walletText.note)),
+        similarity(plain.note, walletText.merchant),
       ) >= 0.4
-    const strong = sameAccount || cardPaid || viaChannel || similar
-    const score = (sameAccount ? 4 : 0) + (viaChannel ? 2 : 0) + (similar ? 2 : 0) + (cardPaid ? 1 : 0) + (diff === 0 ? 1 : 0)
+    const manual = !!row.ref && t.source === 'manual'
+    if (manual && diff > 0 && !similarity04) continue
+    const walletSource = row.ref ? ctx.source : ctx.sourceOf?.(t)
+    const wallet = walletSource && WALLETS.has(walletSource) ? walletSource : undefined
+    const channel = channelOf(`${plain.merchant ?? ''} ${plain.note ?? ''}`)
+    if (channel && wallet && channel !== wallet) continue
+    const walletAccount = row.ref ? accountId : t.accountId
+    const bankAccount = row.ref ? t.accountId : accountId
+    if (!manual && walletAccount !== bankAccount && isCard(ctx.accountTypeOf?.(walletAccount))) continue
+    const sameAccount = walletAccount === bankAccount
+    const cardPaid = !!row.ref && !!row.accountName && CARD_PAID.test(row.accountName)
+    const viaChannel = !!channel && channel === wallet
+    const strong = !manual && (sameAccount || cardPaid || viaChannel || similarity04)
+    if (strongOnly && !strong) continue
+    const score = (sameAccount ? 4 : 0) + (viaChannel ? 2 : 0) + (similarity04 ? 2 : 0) + (cardPaid ? 1 : 0) + (diff === 0 ? 1 : 0)
     if (score > bestScore) {
       best = { tx: t, strong }
       bestScore = score
     }
   }
   return best
+}
+
+/** 钱包提现、转出到银行卡的收入与银行入账合并时，改成从钱包账户到银行账户的转账 */
+function transferOf(
+  row: ParsedRow,
+  accountId: number,
+  target: Transaction,
+  ctx: MergeContext & { walletAccountOf: (source: ImportSource | undefined) => number | undefined },
+): PreviewItem['mergeAsTransfer'] {
+  if (row.type !== 'income' || target.source === 'manual') return undefined
+  const walletText = row.ref ? `${row.merchant ?? ''} ${row.note ?? ''}` : `${target.merchant ?? ''} ${target.note ?? ''}`
+  if (!SELF_TRANSFER.test(walletText)) return undefined
+  const type = ctx.accountTypeOf ?? (() => undefined)
+  // 钱包那条按付款方式落到了银行卡上时，转出账户用这个钱包来源对应的钱包账户
+  const walletSide = row.ref ? accountId : target.accountId
+  const from = isWalletAccount(type(walletSide)) ? walletSide : ctx.walletAccountOf(row.ref ? ctx.source : ctx.sourceOf?.(target)) ?? walletSide
+  const to = row.ref ? target.accountId : accountId
+  return from !== to ? { from, to } : undefined
 }
 
 export interface MergeLabels {
@@ -185,54 +240,52 @@ function compact<T extends object>(value: T): T {
 }
 
 /**
- * 把预览行合并进已有流水，返回合并后的流水（不含 updatedAt 的更新）。
- * 保留钱包那一侧的商户、备注、时间和交易单号，账户用银行流水那一侧的（钱实际从这张卡出）；
- * 银行流水或手记那一侧的原始信息存进 merged。钱包里提现、转出到银行卡的收入，合并后改成
- * 从钱包账户到银行账户的转账。分类以已有那条为准，没有时用预览行的。
+ * 把预览行合并进已有流水，返回合并后的流水（不含 updatedAt 的更新）：
+ * - 钱包 × 银行流水：保留钱包的日期、时间、商户、备注和交易单号（钱包没有的沿用原来的），
+ *   账户用银行卡（钱实际从这张卡出），银行流水原文存进 merged（bank 为 true）；
+ * - 钱包 × 手记：手记的内容不动，只补上交易单号和手记没写的字段，钱包那行存进 merged；
+ * - mergeAsTransfer 时改成本人账户间的转账，去掉分类。
+ * 分类以已有那条为准，没有时用预览行的。
  */
 export function mergeTransaction(existing: Transaction, item: PreviewItem, labels: MergeLabels): Transaction {
   const { row } = item
   const incomingWallet = !!row.ref
-  const entry: MergedEntry = incomingWallet
-    ? {
-        label: labels.existing,
-        date: existing.date,
-        time: existing.time,
-        merchant: existing.merchant,
-        note: existing.note,
-        account: labels.accountName(existing.accountId),
-      }
-    : {
-        label: labels.incoming,
-        date: row.date,
-        time: row.time,
-        merchant: row.merchant,
-        note: row.note,
-        account: labels.accountName(item.accountId),
-      }
-  const next: Transaction = incomingWallet
-    ? { ...existing, date: row.date, time: row.time, merchant: row.merchant, note: row.note, externalId: row.ref }
-    : { ...existing, accountId: item.accountId }
+  const line = (t: { date: string; time?: string; merchant?: string; note?: string }, label: string, account: number, bank: boolean): MergedEntry =>
+    compact({ label, date: t.date, time: t.time, merchant: t.merchant, note: t.note, account: labels.accountName(account), bank: bank || undefined })
+  let next: Transaction
+  let entry: MergedEntry
+  if (!incomingWallet) {
+    next = { ...existing, accountId: item.accountId }
+    entry = line(row, labels.incoming, item.accountId, true)
+  } else if (existing.source === 'manual') {
+    next = {
+      ...existing,
+      time: existing.time ?? row.time,
+      merchant: existing.merchant ?? row.merchant,
+      note: existing.note ?? row.note,
+      externalId: row.ref,
+    }
+    entry = line(row, labels.incoming, item.accountId, false)
+  } else {
+    next = {
+      ...existing,
+      date: row.date,
+      time: row.time ?? existing.time,
+      merchant: row.merchant ?? existing.merchant,
+      note: row.note ?? existing.note,
+      externalId: row.ref,
+    }
+    entry = line(existing, labels.existing, existing.accountId, true)
+  }
   next.categoryId = existing.categoryId ?? item.categoryId
-  next.merged = [...(existing.merged ?? []), compact(entry)]
-  const walletAccount = incomingWallet ? item.accountId : existing.accountId
-  const bankAccount = incomingWallet ? existing.accountId : item.accountId
-  const walletText = `${next.merchant ?? ''} ${next.note ?? ''}`
-  if (next.type === 'income' && SELF_TRANSFER.test(walletText) && walletAccount !== bankAccount) {
+  next.merged = [...(existing.merged ?? []), entry]
+  if (item.mergeAsTransfer) {
     next.type = 'transfer'
-    next.accountId = walletAccount
-    next.transferAccountId = bankAccount
+    next.accountId = item.mergeAsTransfer.from
+    next.transferAccountId = item.mergeAsTransfer.to
     delete next.categoryId
   }
   return compact(next)
-}
-
-/** 合并后是不是本人账户间的转账（用于预览提示） */
-export function mergesIntoTransfer(item: PreviewItem): boolean {
-  const target = item.mergeWith
-  if (!target || item.row.type !== 'income') return false
-  const walletText = item.row.ref ? `${item.row.merchant ?? ''} ${item.row.note ?? ''}` : `${target.merchant ?? ''} ${target.note ?? ''}`
-  return SELF_TRANSFER.test(walletText) && target.accountId !== item.accountId
 }
 
 /** 同一批次里完全相同的行（单号相同，或日期、时间、金额、商户、备注都相同且有时间）视为重复 */
@@ -373,30 +426,56 @@ export interface PreviewContext extends ClassifyContext, MergeContext {
   existing: Transaction[]
 }
 
-/** 组装预览：合并、去重、自动分类、匹配账户；疑似重复和忽略的行默认不勾选，能合并的行默认勾选 */
+/** 钱包来源对应的账户类型 */
+const WALLET_ACCOUNT: Partial<Record<ImportSource, AccountType>> = { wechat: 'wechat', alipay: 'alipay' }
+
+/**
+ * 组装预览：去重、合并、自动分类、匹配账户。疑似重复和忽略的行默认不勾选，能合并的行默认勾选。
+ * 合并分两轮认领已有流水：先给对得上的行，剩下的再作为候选给只有金额日期对得上的行；忽略的行不参与合并。
+ */
 export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewItem[] {
   const seen = new Set<string>()
   const claimed = new Set<Transaction>()
-  return rows.map((row, key) => {
+  const types = new Map(ctx.accounts.map((a) => [a.id, a.type]))
+  const mergeCtx = {
+    ...ctx,
+    accountTypeOf: ctx.accountTypeOf ?? ((id: number) => types.get(id)),
+    walletAccountOf: (source: ImportSource | undefined) => {
+      const type = source && WALLET_ACCOUNT[source]
+      return type ? ctx.accounts.find((a) => a.type === type && !a.archived)?.id : undefined
+    },
+  }
+  const items = rows.map((row, key): PreviewItem => {
     const item: PreviewItem = {
       key,
       row,
       accountId: matchAccount(row.accountName, ctx.accounts, ctx.defaultAccountId),
       selected: false,
     }
-    const dup = findDuplicate(row, ctx.existing, claimed)
+    const dup = findDuplicate(row, ctx.existing, claimed, item.accountId)
     const bk = batchKey(row)
-    const merge = dup ? undefined : findMergeTarget(row, ctx.existing, item.accountId, ctx, claimed)
     if (dup) {
       item.duplicateOf = dup
       claimed.add(dup)
-    } else if (merge) {
-      item.mergeWith = merge.tx
-      if (!merge.strong) item.weakMerge = true
-      claimed.add(merge.tx)
     } else if (bk && seen.has(bk)) item.duplicateOf = 'batch'
     if (bk) seen.add(bk)
-    const hit = classify(row, ctx)
+    return item
+  })
+  const open = items.filter((i) => !i.duplicateOf && !i.row.skipReason)
+  for (const strongOnly of [true, false]) {
+    for (const item of open) {
+      if (item.mergeWith) continue
+      const merge = findMergeTarget(item.row, ctx.existing, item.accountId, mergeCtx, claimed, strongOnly)
+      if (!merge) continue
+      item.mergeWith = merge.tx
+      if (!merge.strong) item.weakMerge = true
+      const transfer = transferOf(item.row, item.accountId, merge.tx, mergeCtx)
+      if (transfer) item.mergeAsTransfer = transfer
+      claimed.add(merge.tx)
+    }
+  }
+  for (const item of items) {
+    const hit = classify(item.row, ctx)
     if (hit) {
       item.categoryId = hit.categoryId
       item.categorySource = hit.source
@@ -404,8 +483,13 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     }
     const status = statusOf(item)
     item.selected = status === 'new' || status === 'uncategorized' || status === 'merge'
-    return item
-  })
+  }
+  return items
+}
+
+/** 合并后仍没有分类：两边都没分类，且不是转账 */
+export function mergedUncategorized(item: PreviewItem): boolean {
+  return !!item.mergeWith && !item.mergeAsTransfer && item.mergeWith.categoryId === undefined && item.categoryId === undefined
 }
 
 export interface PreviewSummary {
@@ -426,7 +510,7 @@ export function summarizePreview(items: PreviewItem[]): PreviewSummary {
     s[statusOf(item)]++
     if (item.selected) {
       s.selected++
-      if (item.categoryId === undefined && !item.mergeWith) s.selectedUncategorized++
+      if (item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined) s.selectedUncategorized++
     }
   }
   return s

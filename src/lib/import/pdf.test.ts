@@ -150,12 +150,12 @@ describe('银行流水 PDF 模板', () => {
     const existing = [
       wallet(1, '2026-01-01', 4680, '拼多多'),
       wallet(2, '2026-01-01', 1500, 'Apple 服务'),
-      // 零钱付的同金额，不是同一笔
+      // 落在微信账户上的同金额：可能是零钱付的，也可能是付款方式没对应上的银行卡
       wallet(3, '2026-01-02', 1289, '某某超市', 1),
     ]
     const items = buildPreview(rows, { categories: [], merchantHistory: new Map(), accounts, defaultAccountId: 2, existing })
     expect(items.map((i) => i.mergeWith?.id)).toEqual([1, undefined, 2, 3, undefined])
-    // 同账户的两笔直接合并；零钱付的同金额只是候选（疑似重复），默认不勾选
+    // 同账户的两笔直接合并；账户对不上的只作为候选（疑似重复），默认不勾选，可改为单独入账
     expect(items.map((i) => statusOf(i))).toEqual(['merge', 'ignored', 'merge', 'duplicate', 'uncategorized'])
     expect(items.map((i) => i.selected)).toEqual([true, false, true, false, true])
   })

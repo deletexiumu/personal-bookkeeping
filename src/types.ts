@@ -67,6 +67,8 @@ export interface MergedEntry {
   note?: string
   /** 原来所在的账户名 */
   account?: string
+  /** 这一行来自银行流水（用来识别重复导入，已经合并过银行流水的不再合并） */
+  bank?: boolean
 }
 
 /** 分类和账户图标的配色，对应 tokens.css 中的语义色 / 图表色 */
