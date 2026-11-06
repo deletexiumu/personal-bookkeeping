@@ -26,12 +26,14 @@ export function accountLabel(t: Transaction, lookup: Lookup): string {
   return `${from} → ${lookup.account(t.transferAccountId)?.name ?? '未知账户'}`
 }
 
-/** 带符号的金额：支出「-」、收入「+」、转账不带符号 */
+/** 带符号的金额：支出「-」、收入「+」，转账和不计收支的不带符号 */
 export function signedAmount(t: Transaction): string {
-  const sign = t.type === 'expense' ? '-' : t.type === 'income' ? '+' : ''
+  const sign = t.excluded ? '' : t.type === 'expense' ? '-' : t.type === 'income' ? '+' : ''
   return sign + formatCents(t.amount)
 }
 
+/** 收入、支出按金额颜色；转账和不计收支的用次要文字色 */
 export function amountClass(t: Transaction): string {
-  return t.type === 'income' ? 'amount-income' : t.type === 'transfer' ? 'text-secondary' : 'amount-expense'
+  if (t.type === 'transfer' || t.excluded) return 'text-secondary'
+  return t.type === 'income' ? 'amount-income' : 'amount-expense'
 }

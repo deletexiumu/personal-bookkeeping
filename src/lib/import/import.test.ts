@@ -9,10 +9,12 @@ import {
   classify,
   findDuplicate,
   findMergeTarget,
+  findTransferPair,
   matchAccount,
   mergeTransaction,
   statusOf,
   summarizePreview,
+  toTransaction,
   type PreviewItem,
 } from './preview'
 import { similarity } from './similarity'
@@ -432,6 +434,23 @@ describe('钱包账单与银行流水合并', () => {
       ctx([t]),
     )
     expect(again.map((i) => i.duplicateOf)).toEqual([undefined, t])
+    // 换格式再导入：同一天的那行先认领，次日的新一笔照常入账
+    const metro = walletTx({ id: 1, amount: 300, accountId: 2, merged: [{ label: '招商银行流水', date: '2026-10-31', merchant: '上海地铁', note: '快捷支付', bank: true }] })
+    const reformatted = buildPreview(
+      [
+        row({ amount: 300, date: '2026-11-01', merchant: '上海地铁', note: '快捷支付' }),
+        row({ amount: 300, date: '2026-10-31', merchant: '上海地铁运营有限公司', note: '银联快捷支付' }),
+      ],
+      ctx([metro]),
+    )
+    expect(reformatted.map((i) => i.duplicateOf)).toEqual([undefined, metro])
+  })
+
+  it('预览：次日的银行流水有对得上的钱包流水时合并，不当成前一天已合并流水的重复', () => {
+    const merged = walletTx({ id: 2, accountId: 2, merchant: '星巴克', merged: [{ label: '招商银行流水', date: '2026-10-31', merchant: '星巴克', note: '快捷支付', bank: true }] })
+    const wallet = walletTx({ id: 3, merchant: '星巴克', externalId: 'W3', date: '2026-11-01' })
+    const items = buildPreview([row({ date: '2026-11-01', merchant: '星巴克', note: '快捷支付' })], ctx([merged, wallet]))
+    expect(view(items)).toEqual([['merge', 3, true]])
   })
 
   it('钱包 × 手记合并后，银行流水还能再合并进来', () => {
@@ -443,5 +462,101 @@ describe('钱包账单与银行流水合并', () => {
   it('一笔已有流水只合并一次', () => {
     const items = buildPreview([row({ merchant: '家和鲜包点', note: '快捷支付' }), row({ merchant: '家和鲜包点', note: '快捷支付' })], ctx([walletTx({})]))
     expect(items.map((i) => i.mergeWith?.id)).toEqual([300, undefined])
+  })
+})
+
+describe('本人账户间挪钱', () => {
+  // 账户 2 招行卡、5 中信卡、4 微信
+  const accounts: Account[] = [
+    { id: 2, name: '招行卡', type: 'debit' },
+    { id: 5, name: '中信卡', type: 'debit' },
+    { id: 4, name: '微信', type: 'wechat' },
+  ]
+  const self = (patch: Partial<Transaction>) => tx({ id: 500, source: 'import', excluded: true, ...patch })
+  const labels = { incoming: '招商银行流水', existing: '中信银行流水', accountName: (id: number) => accounts.find((a) => a.id === id)?.name }
+  const ctx = (existing: Transaction[], defaultAccountId: number) => ({ categories, merchantHistory: new Map(), accounts, defaultAccountId, existing })
+
+  it('勾选入账的不计收支 / 本人账户互转行记为不计收支', () => {
+    const item: PreviewItem = { key: 0, row: row({ skipReason: '不计收支', merchant: '余额宝' }), accountId: 2, selected: true }
+    expect(toTransaction(item).excluded).toBe(true)
+    expect(toTransaction({ ...item, row: row({ skipReason: '交易关闭' }) }).excluded).toBeUndefined()
+  })
+
+  it('中信转出、招行转入：两边合并成一笔转账，两边原文都记进明细', () => {
+    const out = self({ accountId: 5, type: 'expense', amount: 500000, merchant: '张三', note: '网银互联跨行转出', date: '2026-10-30' })
+    const inRow = row({ type: 'income', amount: 500000, merchant: '张三', note: '汇入汇款', skipReason: '本人账户互转' })
+    expect(findTransferPair(inRow, [out], 2)).toBe(out)
+    // 同方向、同账户、金额不同、相差 3 天、对方不是不计收支的：都不配对
+    expect(findTransferPair({ ...inRow, type: 'expense' }, [out], 2)).toBeUndefined()
+    expect(findTransferPair(inRow, [out], 5)).toBeUndefined()
+    expect(findTransferPair({ ...inRow, amount: 1 }, [out], 2)).toBeUndefined()
+    expect(findTransferPair({ ...inRow, date: '2026-11-02' }, [out], 2)).toBeUndefined()
+    expect(findTransferPair(inRow, [{ ...out, excluded: undefined }], 2)).toBeUndefined()
+
+    const items = buildPreview([inRow], ctx([out], 2))
+    expect(statusOf(items[0])).toBe('merge')
+    expect(items[0]).toMatchObject({ selected: true, transferPair: true, mergeAsTransfer: { from: 5, to: 2 } })
+    const next = mergeTransaction(out, items[0], labels)
+    expect(next).toMatchObject({ id: 500, type: 'transfer', accountId: 5, transferAccountId: 2, amount: 500000, note: '网银互联跨行转出' })
+    expect(next.excluded).toBeUndefined()
+    expect(next.merged).toEqual([
+      { label: '中信银行流水', date: '2026-10-30', merchant: '张三', note: '网银互联跨行转出', account: '中信卡', bank: true, amount: 500000 },
+      { label: '招商银行流水', date: '2026-10-31', merchant: '张三', note: '汇入汇款', account: '招行卡', bank: true, amount: 500000 },
+    ])
+    // 之后重复导入任一份银行流水都算重复
+    const again = (r: typeof inRow, accountId: number) => buildPreview([r], ctx([next], accountId))[0].duplicateOf
+    expect(again(inRow, 2)).toBe(next)
+    expect(again(row({ type: 'expense', amount: 500000, merchant: '张三', note: '网银互联跨行转出', date: '2026-10-30', skipReason: '本人账户互转' }), 5)).toBe(next)
+  })
+
+  it('微信提现到招行卡：微信把提现记成收入、差一笔服务费，按流出配对，手续费另记', () => {
+    const bank = self({ accountId: 2, type: 'income', amount: 50606, merchant: '张三', note: '网联收款' })
+    // 微信账单的提现行：方向「/」、金额为正，解析成收入；类型列是「零钱提现」
+    const wechatRow = row({ type: 'income', amount: 50657, ref: 'W1', merchant: '招商银行(1234)', kind: '零钱提现', note: '服务费¥0.51', skipReason: '不计收支' })
+    const items = buildPreview([wechatRow], { ...ctx([bank], 4), source: 'wechat' })
+    expect(items[0]).toMatchObject({ transferPair: true, mergeAsTransfer: { from: 4, to: 2 } })
+    const next = mergeTransaction(bank, items[0], { ...labels, incoming: '微信账单', existing: '招商银行流水' })
+    expect(next).toMatchObject({ type: 'transfer', amount: 50606, accountId: 4, transferAccountId: 2 })
+    // 重复导入微信账单按单号认出，重复导入银行流水按明细认出
+    expect(buildPreview([wechatRow], { ...ctx([next], 4), source: 'wechat' })[0].duplicateOf).toBe(next)
+    expect(buildPreview([row({ type: 'income', amount: 50606, merchant: '张三', note: '网联收款', skipReason: '本人账户互转' })], ctx([next], 2))[0].duplicateOf).toBe(next)
+    // 转入比转出多、或差额不是手续费：不配对
+    expect(findTransferPair({ ...wechatRow, amount: 50555 }, [bank], 4, 'wechat')).toBeUndefined()
+  })
+
+  it('先导入了银行流水（财付通入账照常记收入），再导入微信提现：也合并成转账', () => {
+    const bank = tx({ id: 600, source: 'import', accountId: 2, type: 'income', amount: 20000, note: '财付通快捷支付' })
+    const wechatRow = row({ type: 'income', amount: 20000, ref: 'W2', merchant: '中信银行(1145)', kind: '零钱提现', skipReason: '不计收支' })
+    expect(findTransferPair(wechatRow, [bank], 4, 'wechat')).toBe(bank)
+    // 渠道对不上（支付宝）不配对；银行那条是普通收入时，提现没写明渠道也不配对
+    expect(findTransferPair(wechatRow, [bank], 4, 'alipay')).toBeUndefined()
+    expect(findTransferPair(wechatRow, [{ ...bank, note: '工资' }], 4, 'wechat')).toBeUndefined()
+  })
+
+  it('先导入微信账单（提现记为不计收支），再导入银行流水的财付通入账：合并成转账；手记不参与', () => {
+    const wechat = self({ accountId: 4, type: 'income', amount: 50051, externalId: 'W5', merchant: '招商银行(1234)', note: '服务费¥0.51' })
+    const bankRow = row({ type: 'income', amount: 50000, note: '财付通快捷支付' })
+    const items = buildPreview([bankRow], { ...ctx([wechat], 2), sourceOf: () => 'wechat' as const })
+    expect(items[0]).toMatchObject({ transferPair: true, selected: true, mergeAsTransfer: { from: 4, to: 2 } })
+    expect(statusOf(items[0])).toBe('merge')
+    // 钱包来源对不上不配对
+    expect(findTransferPair(bankRow, [wechat], 2, undefined, undefined, () => 'alipay')).toBeUndefined()
+    // 手记写了「微信」也不会被改成转账
+    const manual = tx({ id: 700, source: 'manual', accountId: 2, type: 'expense', amount: 20000, note: '微信 请客', categoryId: 3 })
+    const topUp = row({ type: 'income', amount: 20000, ref: 'W6', merchant: '招商银行(1234)', kind: '零钱充值', skipReason: '不计收支' })
+    expect(findTransferPair(topUp, [manual], 4, 'wechat')).toBeUndefined()
+  })
+
+  it('银行流水按金额正负判断方向，摘要里有「提现」也不改', () => {
+    const out = self({ accountId: 5, type: 'income', amount: 1000, note: '证券提现' })
+    const inRow = row({ type: 'expense', amount: 1000, note: '银证转账', skipReason: '本人账户互转' })
+    expect(findTransferPair(inRow, [out], 2)).toBe(out)
+  })
+
+  it('找不到另一边时照旧忽略；勾选后按不计收支入账，不计入待分类', () => {
+    const items = buildPreview([row({ type: 'income', merchant: '余额宝', note: '余额宝-单次转入', skipReason: '不计收支' })], ctx([], 2))
+    expect(statusOf(items[0])).toBe('ignored')
+    expect(items[0].selected).toBe(false)
+    expect(summarizePreview([{ ...items[0], selected: true }])).toMatchObject({ selected: 1, selectedUncategorized: 0 })
   })
 })

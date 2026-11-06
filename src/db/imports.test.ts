@@ -84,6 +84,30 @@ describe('导入批次', () => {
     expect(await db.transactions.count()).toBe(1)
   })
 
+  it('本人账户间转账：已有那条改成转账，提现手续费另记一笔支出', async () => {
+    await db.accounts.bulkPut([
+      { id: 2, name: '招行卡', type: 'debit' },
+      { id: 4, name: '微信', type: 'wechat' },
+    ])
+    const bankId = await addTransaction(db, { type: 'income', amount: 50606, accountId: 2, date: '2026-10-31', note: '网联收款', excluded: true })
+    await db.transactions.update(bankId, { source: 'import' })
+    const bank = (await db.transactions.get(bankId))!
+    const wechatRow: PreviewItem = {
+      key: 0,
+      row: { line: 2, date: '2026-10-31', type: 'income', amount: 50657, ref: 'W1', merchant: '招商银行(1234)', kind: '零钱提现', note: '服务费¥0.51', skipReason: '不计收支' },
+      accountId: 4,
+      mergeWith: bank,
+      transferPair: true,
+      mergeAsTransfer: { from: 4, to: 2 },
+      selected: true,
+    }
+    const batchId = await commitImport(db, { source: 'wechat', fileName: 'w.xlsx', rowCount: 1, items: [wechatRow] })
+    expect(await db.transactions.get(bankId)).toMatchObject({ type: 'transfer', amount: 50606, accountId: 4, transferAccountId: 2 })
+    const fee = await db.transactions.where('importBatchId').equals(batchId).toArray()
+    expect(fee).toMatchObject([{ type: 'expense', amount: 51, accountId: 4, note: '提现手续费' }])
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 0, mergedCount: 1 })
+  })
+
   it('整批撤销删除该批次流水，不影响其他记录', async () => {
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-31' })
     const batchId = await commitImport(db, { source: 'csv', fileName: 'a.csv', rowCount: 2, items: [item(0), item(1)] })
@@ -93,12 +117,13 @@ describe('导入批次', () => {
     expect(await revertImport(db, batchId)).toBe(0)
   })
 
-  it('去重候选：日期前后各一天，加上单号相同的流水', async () => {
+  it('去重候选：日期前后各两天，加上单号相同的流水', async () => {
+    await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-28' })
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-29' })
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-10-30' })
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2026-11-02' })
     await addTransaction(db, { type: 'expense', amount: 1, accountId: 1, date: '2025-01-01', externalId: 'OLD' })
     const found = await loadDedupeCandidates(db, ['2026-11-01', '2026-10-31'], ['OLD'])
-    expect(found.map((t) => t.date).sort()).toEqual(['2025-01-01', '2026-10-30', '2026-11-02'])
+    expect(found.map((t) => t.date).sort()).toEqual(['2025-01-01', '2026-10-29', '2026-10-30', '2026-11-02'])
   })
 })

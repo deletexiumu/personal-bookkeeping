@@ -1,6 +1,6 @@
 import { FileCheck2 } from 'lucide-react'
 import { useState } from 'react'
-import { statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
+import { isNeutral, statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
 import { ruleFromRow } from '../../lib/import/rules'
 import { normalizeText } from '../../lib/import/similarity'
 import type { RowError } from '../../lib/import/table'
@@ -95,8 +95,15 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
   /** 合并候选改为单独入账，或改回合并 */
   function toggleMerge(item: PreviewItem) {
     if (item.mergeWith) {
-      const { mergeWith, weakMerge, mergeAsTransfer } = item
-      patch(item.key, { mergeWith: undefined, weakMerge: undefined, mergeAsTransfer: undefined, declinedMerge: { mergeWith, weakMerge, mergeAsTransfer }, selected: true })
+      const { mergeWith, weakMerge, mergeAsTransfer, transferPair } = item
+      patch(item.key, {
+        mergeWith: undefined,
+        weakMerge: undefined,
+        mergeAsTransfer: undefined,
+        transferPair: undefined,
+        declinedMerge: { mergeWith, weakMerge, mergeAsTransfer, transferPair },
+        selected: !transferPair,
+      })
     } else if (item.declinedMerge) {
       patch(item.key, { ...item.declinedMerge, declinedMerge: undefined, selected: true })
     }
@@ -209,7 +216,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                       {SOURCE_TEXT[item.categorySource]}：{category?.name}
                     </Badge>
                   )}
-                  {row.type === 'income' && status !== 'ignored' && <Badge tone="income">收入</Badge>}
+                  {row.type === 'income' && status !== 'ignored' && !item.transferPair && <Badge tone="income">收入</Badge>}
                 </div>
                 <span className="t-caption text-tertiary">
                   {shortDate(row.date)}
@@ -217,7 +224,8 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {row.merchant && row.note && ` · ${row.note}`}
                   {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
-                  {status !== 'ignored' && (item.mergeWith || item.declinedMerge) && (
+                  {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，不计入收支统计'}
+                  {((item.mergeWith && status !== 'ignored') || item.declinedMerge) && (
                     <>
                       {' · '}
                       <button type="button" className="link-button" onClick={() => toggleMerge(item)}>

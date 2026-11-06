@@ -1,4 +1,5 @@
 import type { Budget, Transaction } from '../types'
+import { statType } from './stats'
 
 export type BudgetLevel = 'ok' | 'warning' | 'over'
 
@@ -24,7 +25,7 @@ export function expenseByCategory(rows: Transaction[]): { total: number; byCateg
   let total = 0
   const byCategory = new Map<number, number>()
   for (const t of rows) {
-    if (t.type !== 'expense') continue
+    if (statType(t) !== 'expense') continue
     total += t.amount
     if (t.categoryId !== undefined) byCategory.set(t.categoryId, (byCategory.get(t.categoryId) ?? 0) + t.amount)
   }

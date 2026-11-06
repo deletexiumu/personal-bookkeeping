@@ -1,5 +1,6 @@
 import type { Transaction } from '../types'
 import type { BookkeepingDB } from './index'
+import { statType } from '../lib/stats'
 
 export type NewTransaction = Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'source'> &
   Partial<Pick<Transaction, 'source'>>
@@ -121,13 +122,14 @@ export interface MonthSummary {
   balance: number
 }
 
-/** 汇总收入、支出和结余；转账不计入 */
+/** 汇总收入、支出和结余；转账和不计收支的不计入 */
 export function summarize(rows: Transaction[]): MonthSummary {
   let income = 0
   let expense = 0
   for (const row of rows) {
-    if (row.type === 'income') income += row.amount
-    else if (row.type === 'expense') expense += row.amount
+    const type = statType(row)
+    if (type === 'income') income += row.amount
+    else if (type === 'expense') expense += row.amount
   }
   return { income, expense, balance: income - expense }
 }

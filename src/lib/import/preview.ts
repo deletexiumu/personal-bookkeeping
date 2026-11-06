@@ -27,8 +27,10 @@ export interface PreviewItem {
   weakMerge?: boolean
   /** 合并后是本人账户间的转账（钱包提现到银行卡）：从钱包账户转到银行账户 */
   mergeAsTransfer?: { from: number; to: number }
+  /** 本人账户间挪钱的另一边：这一行（不计收支）与已有那条（不计收支）合并成一笔转账 */
+  transferPair?: boolean
   /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
-  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer'>
+  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer' | 'transferPair'>
   selected: boolean
 }
 
@@ -36,7 +38,7 @@ export type PreviewStatus = 'new' | 'merge' | 'duplicate' | 'uncategorized' | 'i
 
 /** 每行只归入一种状态：忽略 > 合并 > 疑似重复 > 待分类 > 新增 */
 export function statusOf(item: PreviewItem): PreviewStatus {
-  if (item.row.skipReason) return 'ignored'
+  if (item.row.skipReason && !(item.transferPair && item.mergeWith)) return 'ignored'
   if (item.mergeWith) return item.weakMerge ? 'duplicate' : 'merge'
   if (item.duplicateOf) return 'duplicate'
   if (item.categoryId === undefined) return 'uncategorized'
@@ -52,32 +54,34 @@ function hasBankEntry(t: Transaction): boolean {
   return !!t.merged?.some((m) => m.bank)
 }
 
-/** 已合并进 t 的银行流水里有完全相同的一行（重复导入同一份银行流水） */
+/**
+ * 已合并进 t 的明细里有这一行：钱包那行按交易单号比对；银行流水那行比对日期、金额（明细里记了原金额时用原金额）、
+ * 对手和摘要都相同（重复导入同一份账单）
+ */
 function mergedContains(t: Transaction, row: ParsedRow): boolean {
-  if (!mergedComparable(t, row)) return false
-  return t.merged!.some(
+  if (!t.merged?.length) return false
+  if (row.ref) return t.merged.some((m) => m.ref === row.ref)
+  // 合并时可能改成了转账（钱包提现到银行卡），类型不再一致
+  if (t.type !== 'transfer' && t.type !== row.type) return false
+  return t.merged.some(
     (m) =>
       m.bank &&
+      (m.amount ?? t.amount) === row.amount &&
       m.date === row.date &&
       normalizeText(m.merchant) === normalizeText(row.merchant) &&
       normalizeText(m.note) === normalizeText(row.note),
   )
 }
 
-function mergedComparable(t: Transaction, row: ParsedRow): boolean {
-  if (row.ref || !hasBankEntry(t) || t.amount !== row.amount) return false
-  // 合并时可能改成了转账（钱包提现到银行卡），类型不再一致
-  return t.type === 'transfer' || t.type === row.type
-}
-
 /**
  * 同一份银行流水换了格式再导入（如先 PDF 后 Excel）：摘要、对手写法可能不同，记账日也可能差一天。
  * 同一张卡、日期相差不超过 1 天，并且对手相似（都有对手时比对手，否则比摘要），或这一行没有文字。
  */
-function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number): boolean {
-  if (!mergedComparable(t, row) || (t.accountId !== accountId && t.transferAccountId !== accountId)) return false
+function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number, maxDiff: number): boolean {
+  if (row.ref || !hasBankEntry(t) || (t.type !== 'transfer' && t.type !== row.type)) return false
+  if (t.accountId !== accountId && t.transferAccountId !== accountId) return false
   return t.merged!.some((m) => {
-    if (!m.bank || dayDiff(m.date, row.date) > 1) return false
+    if (!m.bank || (m.amount ?? t.amount) !== row.amount || dayDiff(m.date, row.date) > maxDiff) return false
     if (!normalizeText(row.merchant) && !normalizeText(row.note)) return true
     if (row.merchant && m.merchant) return similarity(companyText(row.merchant), companyText(m.merchant)) >= 0.4
     return similarity(row.merchant ?? row.note, m.merchant ?? m.note) >= 0.5
@@ -154,6 +158,90 @@ export interface MergeMatch {
 export function canMerge(t: Transaction, row: ParsedRow): boolean {
   if (hasBankEntry(t) || !row.ref === !t.externalId) return false
   return t.type !== 'transfer' && t.type === row.type && t.amount === row.amount
+}
+
+/** 保存时再确认一次：已有那条还能按预览时的方式合并 */
+export function stillMergeable(
+  t: Transaction,
+  item: PreviewItem,
+  source?: ImportSource,
+  sourceOf?: (t: Transaction) => ImportSource | undefined,
+): boolean {
+  if (item.transferPair) return findTransferPair(item.row, [t], item.accountId, source, undefined, sourceOf) === t
+  return canMerge(t, item.row)
+}
+
+/** 本人账户间挪钱、不计入收支的行（勾选入账时记为不计收支） */
+const NEUTRAL_REASONS: ReadonlySet<string> = new Set(['不计收支', '本人账户互转'])
+
+export function isNeutral(row: ParsedRow): boolean {
+  return !!row.skipReason && NEUTRAL_REASONS.has(row.skipReason)
+}
+
+/** 账单里的提现手续费（分），如「服务费¥0.51」 */
+function feeOf(text: string | undefined): number {
+  const m = /服务费\s*[¥￥]?\s*(\d+(?:\.\d+)?)/.exec(text ?? '')
+  return m ? Math.round(Number(m[1]) * 100) : 0
+}
+
+/** 钱包提现、转出到银行卡：钱离开这个钱包 */
+const MONEY_OUT = /提现|服务费|转出到银行卡/
+
+/**
+ * 这笔钱实际是流出（expense）还是流入（income）这个账户。钱包账单里提现这类不计收支的行方向不可靠
+ * （微信把零钱提现记成收入），钱包那一侧（有交易单号）按文字判断；银行流水按金额正负，可靠，不改。
+ */
+export function flowOf(x: { type: Transaction['type']; merchant?: string; note?: string; kind?: string }, wallet: boolean): Transaction['type'] {
+  return wallet && MONEY_OUT.test(`${x.kind ?? ''} ${x.merchant ?? ''} ${x.note ?? ''}`) ? 'expense' : x.type
+}
+
+/** 本人账户间挪钱时，转出比转入多出的提现手续费（分）；不是手续费造成的差额返回 undefined */
+export function transferFee(outAmount: number, inAmount: number, ...texts: (string | undefined)[]): number | undefined {
+  if (outAmount === inAmount) return 0
+  const fee = Math.max(...texts.map(feeOf))
+  return fee > 0 && outAmount - inAmount === fee ? fee : undefined
+}
+
+/**
+ * 本人账户间挪钱的另一边：已有那条在另一个账户上、资金流向相反（钱包提现按流出算）、金额相同
+ * （或转出比转入多一笔提现手续费），日期相差不超过 2 天，并且满足其一：
+ * - 这一行是不计收支 / 本人账户互转，已有那条也标为不计收支；
+ * - 这一行是钱包里的不计收支，已有那条是导入的银行流水，写明了这个钱包渠道（财付通、支付宝等）；
+ * - 这一行是银行流水、写明了钱包渠道，已有那条是这个钱包导入的、标为不计收支的流水（先导入钱包账单的情况）。
+ * 手记不参与。
+ * 合并成一笔从转出那边到转入那边的转账。有多个时取日期最近的；exclude 里的流水（已被认领）不参与。
+ */
+export function findTransferPair(
+  row: ParsedRow,
+  candidates: Transaction[],
+  accountId: number,
+  source?: ImportSource,
+  exclude?: ReadonlySet<Transaction>,
+  sourceOf?: (t: Transaction) => ImportSource | undefined,
+): Transaction | undefined {
+  const neutral = isNeutral(row)
+  if (row.skipReason && !neutral) return undefined
+  const rowChannel = row.ref ? undefined : channelOf(`${row.merchant ?? ''} ${row.note ?? ''}`)
+  if (!neutral && !rowChannel) return undefined
+  const rowFlow = flowOf(row, !!row.ref)
+  let best: Transaction | undefined
+  let bestDiff = Infinity
+  for (const t of candidates) {
+    if (exclude?.has(t) || t.type === 'transfer' || t.source === 'manual' || t.accountId === accountId || t.merged?.length) continue
+    const tFlow = flowOf(t, !!t.externalId)
+    if (tFlow === rowFlow) continue
+    const bothNeutral = neutral && !!t.excluded
+    const walletRow = neutral && !!row.ref && !t.externalId && !!source && channelOf(`${t.merchant ?? ''} ${t.note ?? ''}`) === source
+    const bankRow = !!rowChannel && !!t.excluded && !!t.externalId && sourceOf?.(t) === rowChannel
+    if (!bothNeutral && !walletRow && !bankRow) continue
+    const [out, inn] = rowFlow === 'expense' ? [row, t] : [t, row]
+    if (transferFee(out.amount, inn.amount, row.note, t.note) === undefined) continue
+    const diff = dayDiff(t.date, row.date)
+    if (diff > 2 || diff >= bestDiff) continue
+    best = t
+    bestDiff = diff
+  }
+  return best
 }
 
 /**
@@ -260,6 +348,28 @@ export function mergeTransaction(existing: Transaction, item: PreviewItem, label
   const incomingWallet = !!row.ref
   const line = (t: { date: string; time?: string; merchant?: string; note?: string }, label: string, account: number, bank: boolean): MergedEntry =>
     compact({ label, date: t.date, time: t.time, merchant: t.merchant, note: t.note, account: labels.accountName(account), bank: bank || undefined })
+  if (item.transferPair && item.mergeAsTransfer) {
+    // 两边都是本人账户间挪钱：已有那条改成转账，金额取实际到账的（手续费另记一笔支出，见 commitImport）。
+    // 两边的原始信息（含金额和交易单号）都记进 merged，重复导入任一份账单都能认出来
+    const side = (t: { date: string; time?: string; merchant?: string; note?: string }, label: string, account: number, ref: string | undefined, amount: number) =>
+      compact({ ...line(t, label, account, !ref), amount, ref })
+    const next: Transaction = {
+      ...existing,
+      type: 'transfer',
+      amount: Math.min(existing.amount, row.amount),
+      accountId: item.mergeAsTransfer.from,
+      transferAccountId: item.mergeAsTransfer.to,
+      time: existing.time ?? row.time,
+      merged: [
+        ...(existing.merged ?? []),
+        side(existing, labels.existing, existing.accountId, existing.externalId, existing.amount),
+        side(row, labels.incoming, item.accountId, row.ref, row.amount),
+      ],
+    }
+    delete next.categoryId
+    delete next.excluded
+    return compact(next)
+  }
   let next: Transaction
   let entry: MergedEntry
   if (!incomingWallet) {
@@ -292,6 +402,7 @@ export function mergeTransaction(existing: Transaction, item: PreviewItem, label
     next.accountId = item.mergeAsTransfer.from
     next.transferAccountId = item.mergeAsTransfer.to
     delete next.categoryId
+    delete next.excluded
   }
   return compact(next)
 }
@@ -470,14 +581,29 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     if (bk) seen.add(bk)
     return item
   })
-  // 换格式重新导入已合并的银行流水：等整份文件的精确重复都认领完再找，免得抢走精确对得上的那条
-  for (const item of items) {
-    if (item.duplicateOf || item.row.ref) continue
-    const dup = ctx.existing.find((t) => !claimed.has(t) && mergedLooselyContains(t, item.row, item.accountId))
-    if (dup) {
-      item.duplicateOf = dup
-      claimed.add(dup)
+  // 换格式重新导入已合并的银行流水：等整份文件的精确重复都认领完再找，先找同一天的，再找差一天的；
+  // 差一天时，这一行若有对得上的合并对象，留给合并
+  for (const maxDiff of [0, 1]) {
+    for (const item of items) {
+      if (item.duplicateOf || item.row.ref) continue
+      if (maxDiff > 0 && findMergeTarget(item.row, ctx.existing, item.accountId, mergeCtx, claimed, true)) continue
+      const dup = ctx.existing.find((t) => !claimed.has(t) && mergedLooselyContains(t, item.row, item.accountId, maxDiff))
+      if (dup) {
+        item.duplicateOf = dup
+        claimed.add(dup)
+      }
     }
+  }
+  // 本人账户间挪钱：与另一边已入账的不计收支流水合并成转账
+  for (const item of items) {
+    if (item.duplicateOf) continue
+    const pair = findTransferPair(item.row, ctx.existing, item.accountId, ctx.source, claimed, ctx.sourceOf)
+    if (!pair) continue
+    item.mergeWith = pair
+    item.transferPair = true
+    item.mergeAsTransfer =
+      flowOf(item.row, !!item.row.ref) === 'expense' ? { from: item.accountId, to: pair.accountId } : { from: pair.accountId, to: item.accountId }
+    claimed.add(pair)
   }
   const open = items.filter((i) => !i.duplicateOf && !i.row.skipReason)
   for (const strongOnly of [true, false]) {
@@ -528,7 +654,7 @@ export function summarizePreview(items: PreviewItem[]): PreviewSummary {
     s[statusOf(item)]++
     if (item.selected) {
       s.selected++
-      if (item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined) s.selectedUncategorized++
+      if (item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined && !isNeutral(item.row)) s.selectedUncategorized++
     }
   }
   return s
@@ -549,5 +675,6 @@ export function toTransaction(item: PreviewItem): Omit<Transaction, 'id' | 'crea
   if (row.merchant) tx.merchant = row.merchant
   if (row.note) tx.note = row.note
   if (row.ref) tx.externalId = row.ref
+  if (isNeutral(row)) tx.excluded = true
   return tx
 }

@@ -27,7 +27,8 @@ export function transactionsToCsv(rows: Transaction[], categories: Category[], a
     [
       t.date,
       t.time ?? '',
-      TYPE_LABEL[t.type],
+      // 不计收支的写成「不计收支」，导回时按中性行处理
+      t.excluded ? '不计收支' : TYPE_LABEL[t.type],
       yuan(t.amount),
       t.categoryId === undefined ? '' : (categoryName.get(t.categoryId) ?? ''),
       accountName.get(t.accountId) ?? '',

@@ -1,8 +1,9 @@
 import type { Category, CategoryType, Transaction } from '../types'
+import { statType } from './stats'
 import { formatCents } from './money'
 import type { Bucket } from './period'
 
-/** 一个区间的收支概况；转账不计入 */
+/** 一个区间的收支概况；转账和不计收支的不计入 */
 export interface PeriodStats {
   income: number
   expense: number
@@ -18,8 +19,9 @@ export function periodStats(rows: Transaction[]): PeriodStats {
   let expense = 0
   let count = 0
   for (const t of rows) {
-    if (t.type === 'income') income += t.amount
-    else if (t.type === 'expense') expense += t.amount
+    const type = statType(t)
+    if (type === 'income') income += t.amount
+    else if (type === 'expense') expense += t.amount
     else continue
     count++
   }
@@ -69,9 +71,10 @@ export interface TrendPoint extends Bucket {
 export function trendSeries(rows: Transaction[], buckets: Bucket[]): TrendPoint[] {
   const points = buckets.map((b) => ({ ...b, income: 0, expense: 0 }))
   for (const t of rows) {
-    if (t.type === 'transfer') continue
+    const type = statType(t)
+    if (!type) continue
     const point = points.find((p) => t.date >= p.start && t.date <= p.end)
-    if (point) point[t.type] += t.amount
+    if (point) point[type] += t.amount
   }
   return points
 }
@@ -114,7 +117,7 @@ export function categoryShares(rows: Transaction[], categories: Category[], type
   const groups = new Map<number | undefined, { amount: number; count: number }>()
   let total = 0
   for (const t of rows) {
-    if (t.type !== type) continue
+    if (statType(t) !== type) continue
     const group = groups.get(t.categoryId) ?? { amount: 0, count: 0 }
     group.amount += t.amount
     group.count++
@@ -169,15 +172,16 @@ export interface MerchantNet {
   count: number
 }
 
-/** 按商户（没有时按备注）合并收入和支出，按收支总额从大到小；不含转账 */
+/** 按商户（没有时按备注）合并收入和支出，按收支总额从大到小；不含转账和不计收支的 */
 export function merchantNet(rows: Transaction[]): MerchantNet[] {
   const groups = new Map<string, MerchantNet>()
   for (const t of rows) {
-    if (t.type === 'transfer') continue
+    const type = statType(t)
+    if (!type) continue
     const name = merchantOf(t)
     if (!name) continue
     const group = groups.get(name) ?? { key: name, name, income: 0, expense: 0, net: 0, count: 0 }
-    group[t.type] += t.amount
+    group[type] += t.amount
     group.net = group.income - group.expense
     group.count++
     groups.set(name, group)
@@ -192,7 +196,7 @@ export function merchantTop(rows: Transaction[], type: CategoryType, limit = 5):
   const groups = new Map<string, { amount: number; count: number }>()
   let total = 0
   for (const t of rows) {
-    if (t.type !== type) continue
+    if (statType(t) !== type) continue
     total += t.amount
     const name = merchantOf(t)
     if (!name) continue
@@ -231,7 +235,8 @@ export interface Drill {
 
 export function matchDrill(t: Transaction, drill: Drill): boolean {
   if (t.date < drill.start || t.date > drill.end) return false
-  if (drill.type ? t.type !== drill.type : t.type === 'transfer') return false
+  const type = statType(t)
+  if (drill.type ? type !== drill.type : !type) return false
   if (drill.categoryId === null && t.categoryId !== undefined) return false
   if (typeof drill.categoryId === 'number' && t.categoryId !== drill.categoryId) return false
   if (drill.merchant !== undefined && merchantOf(t) !== drill.merchant) return false
