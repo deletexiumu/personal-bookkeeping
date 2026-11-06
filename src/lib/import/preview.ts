@@ -27,8 +27,10 @@ export interface PreviewItem {
   weakMerge?: boolean
   /** 合并后是本人账户间的转账（钱包提现到银行卡）：从钱包账户转到银行账户 */
   mergeAsTransfer?: { from: number; to: number }
+  /** 本人账户间挪钱的另一边：这一行（不计收支）与已有那条（不计收支）合并成一笔转账 */
+  transferPair?: boolean
   /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
-  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer'>
+  declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer' | 'transferPair'>
   selected: boolean
 }
 
@@ -36,7 +38,7 @@ export type PreviewStatus = 'new' | 'merge' | 'duplicate' | 'uncategorized' | 'i
 
 /** 每行只归入一种状态：忽略 > 合并 > 疑似重复 > 待分类 > 新增 */
 export function statusOf(item: PreviewItem): PreviewStatus {
-  if (item.row.skipReason) return 'ignored'
+  if (item.row.skipReason && !(item.transferPair && item.mergeWith)) return 'ignored'
   if (item.mergeWith) return item.weakMerge ? 'duplicate' : 'merge'
   if (item.duplicateOf) return 'duplicate'
   if (item.categoryId === undefined) return 'uncategorized'
@@ -156,6 +158,59 @@ export function canMerge(t: Transaction, row: ParsedRow): boolean {
   return t.type !== 'transfer' && t.type === row.type && t.amount === row.amount
 }
 
+/** 保存时再确认一次：已有那条还能按预览时的方式合并 */
+export function stillMergeable(t: Transaction, item: PreviewItem): boolean {
+  if (item.transferPair) return !!t.excluded && t.type !== 'transfer' && flowOf(t) !== flowOf(item.row) && t.accountId !== item.accountId
+  return canMerge(t, item.row)
+}
+
+/** 本人账户间挪钱、不计入收支的行（勾选入账时记为不计收支） */
+const NEUTRAL_REASONS: ReadonlySet<string> = new Set(['不计收支', '本人账户互转'])
+
+export function isNeutral(row: ParsedRow): boolean {
+  return !!row.skipReason && NEUTRAL_REASONS.has(row.skipReason)
+}
+
+/** 账单里的提现手续费（分），如「服务费¥0.51」 */
+function feeOf(text: string | undefined): number {
+  const m = /服务费\s*[¥￥]?\s*(\d+(?:\.\d+)?)/.exec(text ?? '')
+  return m ? Math.round(Number(m[1]) * 100) : 0
+}
+
+/** 钱包提现、转出到银行卡：钱离开这个账户。钱包账单里这类行的收支方向常常不可靠（如微信提现记成收入） */
+const MONEY_OUT = /提现|服务费|转出到银行卡/
+
+/** 这笔钱实际是流出（expense）还是流入（income）这个账户 */
+function flowOf(x: { type: Transaction['type']; merchant?: string; note?: string }): Transaction['type'] {
+  return MONEY_OUT.test(`${x.merchant ?? ''} ${x.note ?? ''}`) ? 'expense' : x.type
+}
+
+/**
+ * 本人账户间挪钱的另一边：这一行是不计收支 / 本人账户互转，已有那条标为不计收支、资金流向相反（提现按流出算）、在另一个账户上，
+ * 金额相同（或差一笔提现手续费），日期相差不超过 2 天。合并成一笔从支出那边到收入那边的转账。
+ * 有多个时取日期最近的；exclude 里的流水（已被认领）不参与。
+ */
+export function findTransferPair(
+  row: ParsedRow,
+  candidates: Transaction[],
+  accountId: number,
+  exclude?: ReadonlySet<Transaction>,
+): Transaction | undefined {
+  if (!isNeutral(row)) return undefined
+  let best: Transaction | undefined
+  let bestDiff = Infinity
+  for (const t of candidates) {
+    if (exclude?.has(t) || !t.excluded || t.type === 'transfer' || flowOf(t) === flowOf(row) || t.accountId === accountId) continue
+    const fee = feeOf(row.note) || feeOf(t.note)
+    if (t.amount !== row.amount && (fee === 0 || Math.abs(t.amount - row.amount) !== fee)) continue
+    const diff = dayDiff(t.date, row.date)
+    if (diff > 2 || diff >= bestDiff) continue
+    best = t
+    bestDiff = diff
+  }
+  return best
+}
+
 /**
  * 钱包账单与银行流水里的同一笔钱：用银行卡付款时，同一笔钱会同时出现在两份账单里。
  * 条件：canMerge，日期相差不超过 1 天；银行流水里写明的渠道（财付通、支付宝等）与钱包来源不冲突；
@@ -260,6 +315,22 @@ export function mergeTransaction(existing: Transaction, item: PreviewItem, label
   const incomingWallet = !!row.ref
   const line = (t: { date: string; time?: string; merchant?: string; note?: string }, label: string, account: number, bank: boolean): MergedEntry =>
     compact({ label, date: t.date, time: t.time, merchant: t.merchant, note: t.note, account: labels.accountName(account), bank: bank || undefined })
+  if (item.transferPair && item.mergeAsTransfer) {
+    // 两边都是本人账户间挪钱：已有那条改成转账，金额取实际到账的（扣掉提现手续费）
+    const next: Transaction = {
+      ...existing,
+      type: 'transfer',
+      amount: Math.min(existing.amount, row.amount),
+      accountId: item.mergeAsTransfer.from,
+      transferAccountId: item.mergeAsTransfer.to,
+      time: existing.time ?? row.time,
+      externalId: existing.externalId ?? row.ref,
+      merged: [...(existing.merged ?? []), line(row, labels.incoming, item.accountId, !row.ref)],
+    }
+    delete next.categoryId
+    delete next.excluded
+    return compact(next)
+  }
   let next: Transaction
   let entry: MergedEntry
   if (!incomingWallet) {
@@ -292,6 +363,7 @@ export function mergeTransaction(existing: Transaction, item: PreviewItem, label
     next.accountId = item.mergeAsTransfer.from
     next.transferAccountId = item.mergeAsTransfer.to
     delete next.categoryId
+    delete next.excluded
   }
   return compact(next)
 }
@@ -483,6 +555,17 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       }
     }
   }
+  // 本人账户间挪钱：与另一边已入账的不计收支流水合并成转账
+  for (const item of items) {
+    if (item.duplicateOf) continue
+    const pair = findTransferPair(item.row, ctx.existing, item.accountId, claimed)
+    if (!pair) continue
+    item.mergeWith = pair
+    item.transferPair = true
+    item.mergeAsTransfer =
+      flowOf(item.row) === 'expense' ? { from: item.accountId, to: pair.accountId } : { from: pair.accountId, to: item.accountId }
+    claimed.add(pair)
+  }
   const open = items.filter((i) => !i.duplicateOf && !i.row.skipReason)
   for (const strongOnly of [true, false]) {
     for (const item of open) {
@@ -532,7 +615,7 @@ export function summarizePreview(items: PreviewItem[]): PreviewSummary {
     s[statusOf(item)]++
     if (item.selected) {
       s.selected++
-      if (item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined) s.selectedUncategorized++
+      if (item.mergeWith ? mergedUncategorized(item) : item.categoryId === undefined && !isNeutral(item.row)) s.selectedUncategorized++
     }
   }
   return s
@@ -553,5 +636,6 @@ export function toTransaction(item: PreviewItem): Omit<Transaction, 'id' | 'crea
   if (row.merchant) tx.merchant = row.merchant
   if (row.note) tx.note = row.note
   if (row.ref) tx.externalId = row.ref
+  if (isNeutral(row)) tx.excluded = true
   return tx
 }

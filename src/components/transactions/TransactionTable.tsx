@@ -66,7 +66,10 @@ export function TransactionTable({ transactions, lookup, selectedId, onOpen }: P
               <td>
                 <SourceBadge source={t.source} />
               </td>
-              <td className={`num t-num-m ${amountClass(t)}`}>{signedAmount(t)}</td>
+              <td className={`num t-num-m ${amountClass(t)}`} title={t.excluded ? '不计收支' : undefined}>
+                {signedAmount(t)}
+                {t.excluded && <span className="t-caption text-tertiary"> 不计收支</span>}
+              </td>
             </tr>
           ))}
         </tbody>

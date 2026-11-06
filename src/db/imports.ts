@@ -1,5 +1,5 @@
 import { shiftDate } from '../lib/date'
-import { canMerge, mergeTransaction, toTransaction, type PreviewItem } from '../lib/import/preview'
+import { mergeTransaction, stillMergeable, toTransaction, type PreviewItem } from '../lib/import/preview'
 import type { ImportBatch, ImportSource, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
 
@@ -73,7 +73,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     for (const item of chosen) {
       const current = item.mergeWith?.id === undefined ? undefined : await db.transactions.get(item.mergeWith.id)
       // 预览之后已有那条被删了，或在别处已经合并过：照常新增
-      if (!current || !canMerge(current, item.row)) {
+      if (!current || !stillMergeable(current, item)) {
         inserts.push(item)
         continue
       }

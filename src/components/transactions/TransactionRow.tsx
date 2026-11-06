@@ -33,7 +33,7 @@ export function TransactionRow({ transaction: t, lookup, onOpen, onDelete }: Pro
         </span>
         <span className="tx-side">
           <span className={`t-num-m ${amountClass(t)}`}>{signedAmount(t)}</span>
-          <span className="t-caption text-tertiary">{isTransfer ? '转账' : account}</span>
+          <span className="t-caption text-tertiary">{isTransfer ? '转账' : t.excluded ? `${account} · 不计收支` : account}</span>
         </span>
       </button>
       <IconButton label="删除这条记录" className="tx-delete" onClick={() => onDelete(t)}>

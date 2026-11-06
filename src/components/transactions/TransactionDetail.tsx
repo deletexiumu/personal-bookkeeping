@@ -47,6 +47,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
   const [merchant, setMerchant] = useState(t.merchant ?? '')
   const [tags, setTags] = useState(() => formatTags(t.tags))
   const [note, setNote] = useState(t.note ?? '')
+  const [excluded, setExcluded] = useState(!!t.excluded)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -99,6 +100,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
       merchant: merchant.trim() || undefined,
       note: note.trim() || undefined,
       tags: tagList.length > 0 ? tagList : undefined,
+      excluded: !isTransfer && excluded ? true : undefined,
       ...(isTransfer ? { transferAccountId: toAccountId } : { categoryId: selectedCategory }),
     }
     setSaving(true)
@@ -214,6 +216,12 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
           <span className="field-label">备注</span>
           <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
+        {!isTransfer && (
+          <label className="check-field t-body-s" title="本人账户之间挪钱等：照常计入账户余额，但不计入收入、支出、预算和分析">
+            <input type="checkbox" checked={excluded} onChange={(e) => setExcluded(e.target.checked)} />
+            不计收支（本人账户间挪钱等，只算余额）
+          </label>
+        )}
         <div className="field">
           <span className="field-label">来源</span>
           <div className="tx-detail-source t-caption text-tertiary">

@@ -3,7 +3,7 @@ import { formatCents } from './money'
 
 /** 明细筛选条件；字段为空表示不限 */
 export interface TransactionFilter {
-  /** 关键字：匹配备注、商户、分类名、标签和金额 */
+  /** 关键字：匹配备注、商户、分类名、标签、金额、交易单号和「不计收支」 */
   query?: string
   type?: TransactionType
   accountId?: number
@@ -39,6 +39,7 @@ export function filterTransactions(
       ...(t.tags ?? []),
       amount,
       t.externalId,
+      t.excluded ? '不计收支' : undefined,
     ]
     return haystack.some((text) => text?.toLowerCase().includes(query))
   })

@@ -32,6 +32,8 @@ export function signedAmount(t: Transaction): string {
   return sign + formatCents(t.amount)
 }
 
+/** 收入、支出按金额颜色；转账和不计收支的用次要文字色 */
 export function amountClass(t: Transaction): string {
-  return t.type === 'income' ? 'amount-income' : t.type === 'transfer' ? 'text-secondary' : 'amount-expense'
+  if (t.type === 'transfer' || t.excluded) return 'text-secondary'
+  return t.type === 'income' ? 'amount-income' : 'amount-expense'
 }
