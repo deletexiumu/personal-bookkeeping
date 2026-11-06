@@ -52,42 +52,50 @@ function hasBankEntry(t: Transaction): boolean {
   return !!t.merged?.some((m) => m.bank)
 }
 
-/**
- * 已合并进 t 的银行流水与这一行是同一笔：重复导入同一份银行流水（明细完全相同），
- * 或同一张卡、日期相差不超过 1 天（同一份流水换了格式再导入，摘要写法可能不同）。
- */
-function mergedContains(t: Transaction, row: ParsedRow, accountId?: number): boolean {
-  if (row.ref || !hasBankEntry(t) || t.amount !== row.amount) return false
-  // 合并时可能改成了转账（钱包提现到银行卡），类型不再一致
-  if (t.type !== 'transfer' && t.type !== row.type) return false
-  const sameCard = accountId !== undefined && (t.accountId === accountId || t.transferAccountId === accountId)
+/** 已合并进 t 的银行流水里有完全相同的一行（重复导入同一份银行流水） */
+function mergedContains(t: Transaction, row: ParsedRow): boolean {
+  if (!mergedComparable(t, row)) return false
   return t.merged!.some(
     (m) =>
       m.bank &&
-      ((m.date === row.date &&
-        normalizeText(m.merchant) === normalizeText(row.merchant) &&
-        normalizeText(m.note) === normalizeText(row.note)) ||
-        (sameCard && dayDiff(m.date, row.date) <= 1)),
+      m.date === row.date &&
+      normalizeText(m.merchant) === normalizeText(row.merchant) &&
+      normalizeText(m.note) === normalizeText(row.note),
   )
+}
+
+function mergedComparable(t: Transaction, row: ParsedRow): boolean {
+  if (row.ref || !hasBankEntry(t) || t.amount !== row.amount) return false
+  // 合并时可能改成了转账（钱包提现到银行卡），类型不再一致
+  return t.type === 'transfer' || t.type === row.type
+}
+
+/**
+ * 同一份银行流水换了格式再导入（如先 PDF 后 Excel）：摘要、对手写法可能不同，记账日也可能差一天。
+ * 同一张卡、日期相差不超过 1 天，并且对手相似（都有对手时比对手，否则比摘要），或这一行没有文字。
+ */
+function mergedLooselyContains(t: Transaction, row: ParsedRow, accountId: number): boolean {
+  if (!mergedComparable(t, row) || (t.accountId !== accountId && t.transferAccountId !== accountId)) return false
+  return t.merged!.some((m) => {
+    if (!m.bank || dayDiff(m.date, row.date) > 1) return false
+    if (!normalizeText(row.merchant) && !normalizeText(row.note)) return true
+    if (row.merchant && m.merchant) return similarity(companyText(row.merchant), companyText(m.merchant)) >= 0.4
+    return similarity(row.merchant ?? row.note, m.merchant ?? m.note) >= 0.5
+  })
 }
 
 /**
  * 疑似重复：类型和金额相同，并且满足其一：
- * - 已合并进这条流水的银行流水与这一行是同一笔（见 mergedContains）；
+ * - 已合并进这条流水的银行流水里有完全相同的一行（重复导入同一份银行流水）；
  * - 同一天，且已有流水是手记的（手记备注往往和账单商户写法不同）或任一方没有商户 / 备注；
  * - 日期相差不超过 1 天，且商户 / 备注相似（相似度 ≥ 0.5）。
  * 双方都有交易单号时只按单号精确比对；一方有、一方没有的是钱包账单与银行流水（或手记），见 findMergeTarget。
  * exclude 里的流水（已被本批次前面的行认领）不再参与比对，保证一笔已有流水只对应一行。
  */
-export function findDuplicate(
-  row: ParsedRow,
-  candidates: Transaction[],
-  exclude?: ReadonlySet<Transaction>,
-  accountId?: number,
-): Transaction | undefined {
+export function findDuplicate(row: ParsedRow, candidates: Transaction[], exclude?: ReadonlySet<Transaction>): Transaction | undefined {
   return candidates.find((t) => {
     if (exclude?.has(t)) return false
-    if (mergedContains(t, row, accountId)) return true
+    if (mergedContains(t, row)) return true
     if (row.ref && t.externalId) return row.ref === t.externalId
     if (!row.ref !== !t.externalId) return false
     if (t.type !== row.type || t.amount !== row.amount) return false
@@ -431,7 +439,8 @@ const WALLET_ACCOUNT: Partial<Record<ImportSource, AccountType>> = { wechat: 'we
 
 /**
  * 组装预览：去重、合并、自动分类、匹配账户。疑似重复和忽略的行默认不勾选，能合并的行默认勾选。
- * 合并分两轮认领已有流水：先给对得上的行，剩下的再作为候选给只有金额日期对得上的行；忽略的行不参与合并。
+ * 认领已有流水的顺序：精确重复 → 换格式的已合并银行流水 → 对得上的合并 → 只有金额日期对得上的合并候选；
+ * 忽略的行不参与合并。
  */
 export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewItem[] {
   const seen = new Set<string>()
@@ -452,7 +461,7 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
       accountId: matchAccount(row.accountName, ctx.accounts, ctx.defaultAccountId),
       selected: false,
     }
-    const dup = findDuplicate(row, ctx.existing, claimed, item.accountId)
+    const dup = findDuplicate(row, ctx.existing, claimed)
     const bk = batchKey(row)
     if (dup) {
       item.duplicateOf = dup
@@ -461,6 +470,15 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     if (bk) seen.add(bk)
     return item
   })
+  // 换格式重新导入已合并的银行流水：等整份文件的精确重复都认领完再找，免得抢走精确对得上的那条
+  for (const item of items) {
+    if (item.duplicateOf || item.row.ref) continue
+    const dup = ctx.existing.find((t) => !claimed.has(t) && mergedLooselyContains(t, item.row, item.accountId))
+    if (dup) {
+      item.duplicateOf = dup
+      claimed.add(dup)
+    }
+  }
   const open = items.filter((i) => !i.duplicateOf && !i.row.skipReason)
   for (const strongOnly of [true, false]) {
     for (const item of open) {

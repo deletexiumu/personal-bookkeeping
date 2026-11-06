@@ -228,7 +228,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                 </span>
               </div>
               <span className="preview-category">
-              {status === 'merge' && (item.mergeAsTransfer || item.mergeWith?.categoryId !== undefined) ? (
+              {item.mergeWith && (item.mergeAsTransfer || item.mergeWith.categoryId !== undefined) ? (
                 <span className="t-caption text-tertiary">{item.mergeAsTransfer ? '转账不分类' : '沿用已有分类'}</span>
               ) : (
               <select

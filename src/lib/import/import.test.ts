@@ -421,6 +421,19 @@ describe('钱包账单与银行流水合并', () => {
     expect(excel[0].duplicateOf).toBe(merged)
   })
 
+  it('预览：次日同卡同金额的另一笔不算已合并流水的重复；倒序的流水再导入先认领精确对得上的', () => {
+    const merged = (id: number, note: string) =>
+      walletTx({ id, amount: 300, accountId: 2, merged: [{ label: '招商银行流水', date: '2026-10-31', note, bank: true }] })
+    const next = buildPreview([row({ amount: 300, date: '2026-11-01', merchant: '某便利店', note: 'POS消费' })], ctx([merged(700, '快捷支付')]))
+    expect(next[0].duplicateOf).toBeUndefined()
+    const t = merged(801, '地铁A')
+    const again = buildPreview(
+      [row({ amount: 300, date: '2026-11-01', note: '地铁B' }), row({ amount: 300, date: '2026-10-31', note: '地铁A' })],
+      ctx([t]),
+    )
+    expect(again.map((i) => i.duplicateOf)).toEqual([undefined, t])
+  })
+
   it('钱包 × 手记合并后，银行流水还能再合并进来', () => {
     const t = walletTx({ source: 'manual', merged: [{ label: '微信账单', date: '2026-10-31', merchant: '麦当劳' }], merchant: '麦当劳' })
     const items = buildPreview([row({ merchant: '麦当劳', note: '快捷支付' })], ctx([t]))
