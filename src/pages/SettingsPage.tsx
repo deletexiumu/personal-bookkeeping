@@ -1,17 +1,20 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronRight, DatabaseBackup, Download, FileSpreadsheet, History, Scale } from 'lucide-react'
+import { ChevronRight, DatabaseBackup, Download, FileSpreadsheet, History, Scale, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { navItemOf } from '../app/nav'
 import { usePreferences, type MoneyColors, type ThemePreference } from '../app/preferences'
 import { hrefOf, type RouteName } from '../app/router'
 import { PageHeader } from '../components/layout/AppShell'
+import { AiSettingsForm } from '../components/assistant/AiSettingsForm'
 import { AccountSection } from '../components/settings/AccountSection'
 import { LicenseInfo } from '../components/settings/LicenseInfo'
 import { Dialog } from '../components/ui/Dialog'
+import { Segmented } from '../components/ui/Segmented'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
 import { exportBackup, latestUpgradeBackup } from '../db/backup'
 import { listAccounts, listCategories } from '../db/catalog'
+import { useAiSettings } from '../lib/ai/settings'
 import { backupFileName } from '../lib/backup'
 import { downloadText } from '../lib/download'
 import { csvFileName, transactionsToCsv } from '../lib/exportCsv'
@@ -33,40 +36,13 @@ const MONEY_OPTIONS: { value: MoneyColors; label: string }[] = [
   { value: 'green-income', label: '绿收红支' },
 ]
 
-function Segmented<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string
-  options: { value: T; label: string }[]
-  value: T
-  onChange: (value: T) => void
-}) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          className="segmented-item"
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 /** 设置 / 我的（M06）。移动端「我的」Tab 也指向这里，汇总侧边栏中的次级入口。 */
 export function SettingsPage() {
   const toast = useToast()
   const [preferences, setPreferences] = usePreferences()
   const [licenseOpen, setLicenseOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const aiSettings = useAiSettings()
   const upgradeBackup = useLiveQuery(() => latestUpgradeBackup(db), [])
 
   async function handleExportCsv() {
@@ -117,6 +93,25 @@ export function SettingsPage() {
           </ul>
         </section>
       ))}
+      <section className="settings-group">
+        <h2 className="t-caption text-tertiary settings-group-title">AI 助手</h2>
+        <ul className="card settings-list">
+          <li>
+            <button type="button" className="settings-item" onClick={() => setAiOpen(true)}>
+              <Sparkles size={20} aria-hidden="true" className="settings-item-icon" />
+              <span className="t-body-m">接入点与代理</span>
+              <span className="settings-item-value t-body-s text-tertiary">
+                {aiSettings.mode === 'server' ? '服务器转发' : '浏览器直连'}
+              </span>
+              <ChevronRight size={18} aria-hidden="true" className="text-tertiary" />
+            </button>
+          </li>
+        </ul>
+        <p className="t-caption text-tertiary">点右下角的「AI 助手」（快捷键 A）提问，可以结合当前页面的数据或任意时间段的账单分析。</p>
+      </section>
+      <Dialog open={aiOpen} title="AI 接入点" onClose={() => setAiOpen(false)}>
+        <AiSettingsForm onDone={() => setAiOpen(false)} />
+      </Dialog>
       <section className="settings-group">
         <h2 className="t-caption text-tertiary settings-group-title">外观</h2>
         <div className="card settings-form">

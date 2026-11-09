@@ -17,7 +17,9 @@ import { db } from '../db'
 import { listBudgets } from '../db/budgets'
 import { deleteTransaction, listByMonth, restoreTransactions, summarize } from '../db/transactions'
 import { daysLeftInMonth, monthBudgets } from '../lib/budget'
-import { monthOf, today } from '../lib/date'
+import { useAssistantPage } from '../lib/ai/context'
+import { transactionsPageData } from '../lib/ai/pages'
+import { formatMonth, monthOf, today } from '../lib/date'
 import { filterTransactions, isFilterEmpty, parseTransactionsHash, type TransactionFilter } from '../lib/filter'
 import type { Account, Category, Transaction } from '../types'
 
@@ -61,6 +63,20 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
       })
     },
     [lookup, toast],
+  )
+
+  const filtered = !isFilterEmpty(filter)
+  useAssistantPage(`明细 · ${formatMonth(month)}${filtered ? ' · 已筛选' : ''}`, () =>
+    transactionsPageData({
+      month,
+      filter,
+      summary: summarize(filtered ? visible : transactions),
+      totalCount: transactions.length,
+      visible,
+      categories,
+      accounts,
+      budget: filtered ? undefined : totalBudget?.amount,
+    }),
   )
 
   const open = (t: Transaction) => setSelectedId(t.id)
