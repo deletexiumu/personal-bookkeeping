@@ -8,6 +8,7 @@ import { applyKey, evaluateAmount, hasOperation, keyFromKeyboard, normalizeExpre
 import { loadLastEntry, saveLastEntry } from '../../lib/lastEntry'
 import { formatCents, parseAmountToCents } from '../../lib/money'
 import { parseTags } from '../../lib/tags'
+import { ensureTags } from '../../db/tags'
 import type { Account, Category, CategoryType, TransactionType } from '../../types'
 import { CategoryIcon } from '../CategoryIcon'
 import { useToast } from '../ui/toast-context'
@@ -145,6 +146,8 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
           [type === 'expense' ? 'expenseCategoryId' : 'incomeCategoryId']: selectedCategory,
         })
       }
+      // 新写的标签加进标签目录，下次可以直接点选
+      if (tagList.length > 0) await ensureTags(db, tagList)
     } finally {
       setSaving(false)
     }

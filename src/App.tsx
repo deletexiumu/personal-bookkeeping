@@ -22,6 +22,7 @@ import { LoginPage } from './pages/LoginPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RulesPage } from './pages/RulesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { TagsPage } from './pages/TagsPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 
 export default function App() {
@@ -62,6 +63,8 @@ export default function App() {
     page = <ImportPage categories={activeCategories} accounts={activeAccounts} />
   } else if (route === 'rules') {
     page = <RulesPage categories={categories} />
+  } else if (route === 'tags') {
+    page = <TagsPage categories={categories} accounts={accounts} />
   } else if (route === 'settings') {
     page = <SettingsPage />
   } else if (route === 'login') {

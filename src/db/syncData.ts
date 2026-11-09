@@ -1,4 +1,4 @@
-import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES } from './defaults'
+import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_TAGS } from './defaults'
 import type { BookkeepingDB } from './index'
 import { applyRemoteChanges, SYNC_TABLES, TOMBSTONES, type SyncTable, type Tombstone } from './sync'
 
@@ -194,12 +194,13 @@ export async function markAllForUpload(db: BookkeepingDB): Promise<void> {
   })
 }
 
-/** 用云端数据替换本机前，清空本机数据，只留默认分类和账户（随后从云端拉取） */
+/** 用云端数据替换本机前，清空本机数据，只留默认分类、账户和标签（随后从云端拉取） */
 export async function resetLocalData(db: BookkeepingDB): Promise<void> {
   await applyRemoteChanges(db, SYNC_TABLES, async () => {
     for (const table of SYNC_TABLES) await db.table(table).clear()
     await db.syncTombstones.clear()
     await db.categories.bulkAdd(DEFAULT_CATEGORIES.map((c) => ({ ...c, modifiedAt: 0 })))
     await db.accounts.bulkAdd(DEFAULT_ACCOUNTS.map((a) => ({ ...a, modifiedAt: 0 })))
+    await db.tags.bulkAdd(DEFAULT_TAGS.map((t) => ({ ...t, modifiedAt: 0 })))
   })
 }

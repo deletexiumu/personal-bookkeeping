@@ -1,5 +1,5 @@
 import type { PeriodStats, ShareItem, MerchantNet, TrendPoint } from '../analysis'
-import { SOURCE_LABEL, type TransactionFilter } from '../filter'
+import { SOURCE_LABEL, UNTAGGED, type TransactionFilter } from '../filter'
 import type { Account, Category, Transaction } from '../../types'
 import { transactionView, yuan } from './tools'
 
@@ -35,6 +35,7 @@ export function transactionsPageData(opts: {
     category: f.categoryId !== undefined ? n.category.get(f.categoryId) : undefined,
     account: f.accountId !== undefined ? n.account.get(f.accountId) : undefined,
     source: f.source ? SOURCE_LABEL[f.source] : undefined,
+    tag: f.tag ? (f.tag === UNTAGGED ? '未打标签' : f.tag) : undefined,
   }
   return JSON.stringify({
     page: '明细',
@@ -65,6 +66,8 @@ export function analysisPageData(opts: {
   incomeShares: ShareItem[]
   merchants: ShareItem[]
   nets: MerchantNet[]
+  /** 按标签汇总（支出口径或当前口径） */
+  tags?: { type: 'expense' | 'income'; items: ShareItem[] }
   points: TrendPoint[]
 }): string {
   return JSON.stringify({
@@ -82,6 +85,7 @@ export function analysisPageData(opts: {
       opts.view === 'all'
         ? opts.nets.slice(0, 10).map((m) => ({ name: m.name, income: yuan(m.income), expense: yuan(m.expense), net: yuan(m.net), count: m.count }))
         : undefined,
+    [opts.tags?.type === 'income' ? 'incomeByTag' : 'expenseByTag']: opts.tags ? shares(opts.tags.items, 12) : undefined,
     trend: opts.points.slice(0, 62).map((p) => ({ title: p.title, income: yuan(p.income), expense: yuan(p.expense) })),
   })
 }

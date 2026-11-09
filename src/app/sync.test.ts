@@ -4,6 +4,7 @@ import { latestUpgradeBackup } from '../db/backup'
 import { setBudget } from '../db/budgets'
 import { saveCategory } from '../db/catalog'
 import { addTransaction, deleteTransaction, updateTransaction } from '../db/transactions'
+import { listTagRules, listTags, setMerchantTags } from '../db/tags'
 import type { WireChange } from '../db/syncData'
 import { SyncEngine, type SyncApi, type SyncCursor } from './sync'
 
@@ -93,6 +94,30 @@ describe('两台设备同步', () => {
     expect(row.dirty).toBeUndefined()
     // 默认分类没改过，不上云，也不会在 B 上多出一份
     expect(await b.db.categories.where('name').equals('餐饮').count()).toBe(1)
+  })
+
+  it('标签目录和商户标签随云同步；两台设备给同一商户打标签认作同一条', async () => {
+    const cloud = new FakeCloud()
+    const a = device(cloud)
+    const b = device(cloud)
+    await a.engine.sync()
+    await b.engine.sync()
+    await setMerchantTags(a.db, '西山居万宝楼', ['游戏', '手游'])
+    await addTransaction(a.db, expense(800, { merchant: '谢志英', tags: ['房租'] }))
+    await a.engine.sync()
+    await b.engine.sync()
+    expect((await listTagRules(b.db)).map((r) => [r.merchant, r.tags])).toEqual([['西山居万宝楼', ['游戏', '手游']]])
+    expect((await listTags(b.db)).filter((t) => t.name === '手游')).toHaveLength(1)
+    // 内置标签每台设备都有，不会多出一份
+    expect(await b.db.tags.where('name').equals('游戏').count()).toBe(1)
+    expect((await b.db.transactions.toArray())[0].tags).toEqual(['房租'])
+
+    // B 后改同一商户的标签，A 同步后以 B 为准，仍只有一条
+    await new Promise((r) => setTimeout(r, 5))
+    await setMerchantTags(b.db, '西山居万宝楼', ['游戏'])
+    await b.engine.sync()
+    await a.engine.sync()
+    expect((await listTagRules(a.db)).map((r) => r.tags)).toEqual([['游戏']])
   })
 
   it('合并进来的流水明细（merged）和转账账户随记录同步', async () => {

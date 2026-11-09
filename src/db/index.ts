@@ -1,16 +1,17 @@
 import { Dexie, type EntityTable } from 'dexie'
-import type { Account, Budget, Category, CategoryRule, ImportBatch, ImportTemplate, SyncMeta, Transaction } from '../types'
+import type { Account, Budget, Category, CategoryRule, ImportBatch, ImportTemplate, SyncMeta, Tag, TagRule, Transaction } from '../types'
 import {
   DEFAULT_ACCOUNT_TYPES,
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
+  DEFAULT_TAGS,
   defaultAccountUid,
   defaultCategoryUid,
 } from './defaults'
-import { BACKUP_APP, BACKUP_FORMAT, BACKUP_TABLES, type Backup } from '../lib/backup'
+import { BACKUP_APP, BACKUP_FORMAT, type Backup } from '../lib/backup'
 import { budgetUid, newUid, syncMiddleware, TOMBSTONES, type Tombstone } from './sync'
 
-export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES }
+export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_TAGS }
 
 /** 本地数据库，基于浏览器 IndexedDB。登录后经云同步在多台设备间同步（见 src/db/sync.ts）。 */
 export class BookkeepingDB extends Dexie {
@@ -21,6 +22,8 @@ export class BookkeepingDB extends Dexie {
   importBatches!: EntityTable<ImportBatch, 'id'>
   rules!: EntityTable<CategoryRule, 'id'>
   importTemplates!: EntityTable<ImportTemplate, 'id'>
+  tags!: EntityTable<Tag, 'id'>
+  tagRules!: EntityTable<TagRule, 'id'>
   syncTombstones!: Dexie.Table<Tombstone, [string, string]>
   /** 自动备份：数据库结构升级前、用云端数据替换本机前各留一份，可在设置页下载 */
   upgradeBackups!: Dexie.Table<UpgradeBackup, number>
@@ -104,8 +107,8 @@ export class BookkeepingDB extends Dexie {
         const now = Date.now()
         // 改动之前先把升级前的数据原样存一份
         const data = {} as Backup['data']
-        for (const table of BACKUP_TABLES) data[table] = await tx.table(table).toArray()
-        if (BACKUP_TABLES.some((t) => data[t].length > 0)) {
+        for (const table of V6_TABLES) data[table] = await tx.table(table).toArray()
+        if (V6_TABLES.some((t) => data[t].length > 0)) {
           await tx.table('upgradeBackups').add({
             fromVersion: 6,
             reason: 'upgrade',
@@ -160,14 +163,25 @@ export class BookkeepingDB extends Dexie {
             .modify((row: SyncMeta) => touch(row, newUid()))
         }
       })
-    // 默认分类和账户是每台设备都有的基线：modifiedAt 为 0、不推送，云端有改动时以云端为准
+    // v8：标签目录与商户标签，写入内置的初始标签（每台设备都有，不推送）
+    this.version(8)
+      .stores({
+        tags: '++id, &uid, dirty, name, order',
+        tagRules: '++id, &uid, dirty, merchant',
+      })
+      .upgrade((tx) => tx.table('tags').bulkAdd(DEFAULT_TAGS.map((t) => ({ ...t, modifiedAt: 0 }))))
+    // 默认分类、账户和标签是每台设备都有的基线：modifiedAt 为 0、不推送，云端有改动时以云端为准
     this.on('populate', (tx) => {
       tx.table('categories').bulkAdd(DEFAULT_CATEGORIES.map((c) => ({ ...c, modifiedAt: 0 })))
       tx.table('accounts').bulkAdd(DEFAULT_ACCOUNTS.map((a) => ({ ...a, modifiedAt: 0 })))
+      tx.table('tags').bulkAdd(DEFAULT_TAGS.map((t) => ({ ...t, modifiedAt: 0 })))
     })
     this.use(syncMiddleware())
   }
 }
+
+/** v6 时就有的表（v7 升级前备份用，之后新增的表不在其中） */
+const V6_TABLES = ['accounts', 'categories', 'transactions', 'budgets', 'rules', 'importBatches', 'importTemplates'] as const
 
 export interface UpgradeBackup {
   id?: number

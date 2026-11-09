@@ -1,6 +1,9 @@
 import type { Category, CategoryType, Transaction } from '../types'
 import { statType } from './stats'
 import { formatCents } from './money'
+import { UNTAGGED } from './filter'
+import { merchantOf } from './merchant'
+import { ownTagsOnly, type TagResolver } from './tags'
 import type { Bucket } from './period'
 
 /** 一个区间的收支概况；转账和不计收支的不计入 */
@@ -107,9 +110,45 @@ export interface ShareItem {
   share: number
   categoryId?: number
   merchant?: string
+  /** 标签名；null 表示「未打标签」 */
+  tag?: string | null
 }
 
 const UNCATEGORIZED = '未分类'
+const UNTAGGED_LABEL = '未打标签'
+
+/**
+ * 按标签汇总某个方向的金额，从大到小，「未打标签」排在最后。
+ * 一笔有多个标签时每个标签都计入，所以各标签占比之和可能超过 100%。
+ */
+export function tagShares(rows: Transaction[], type: CategoryType, resolve: TagResolver): ShareItem[] {
+  const groups = new Map<string, { amount: number; count: number }>()
+  let total = 0
+  let untagged = { amount: 0, count: 0 }
+  for (const t of rows) {
+    if (statType(t) !== type) continue
+    total += t.amount
+    const tags = resolve(t)
+    if (tags.length === 0) {
+      untagged = { amount: untagged.amount + t.amount, count: untagged.count + 1 }
+      continue
+    }
+    for (const tag of tags) {
+      const group = groups.get(tag) ?? { amount: 0, count: 0 }
+      group.amount += t.amount
+      group.count++
+      groups.set(tag, group)
+    }
+  }
+  const share = (amount: number) => (total > 0 ? amount / total : 0)
+  const items: ShareItem[] = [...groups]
+    .map(([tag, g]) => ({ key: `tag:${tag}`, name: `#${tag}`, amount: g.amount, count: g.count, share: share(g.amount), tag }))
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'zh-CN'))
+  if (untagged.count > 0) {
+    items.push({ key: UNTAGGED, name: UNTAGGED_LABEL, ...untagged, share: share(untagged.amount), tag: null })
+  }
+  return items
+}
 
 /** 按分类汇总某个方向的金额，从大到小 */
 export function categoryShares(rows: Transaction[], categories: Category[], type: CategoryType): ShareItem[] {
@@ -136,10 +175,7 @@ export function categoryShares(rows: Transaction[], categories: Category[], type
     .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'zh-CN'))
 }
 
-/** 商户名：优先商户，没有时用备注；两者都没有的不参与排行 */
-export function merchantOf(t: Transaction): string | undefined {
-  return t.merchant?.trim() || t.note?.trim() || undefined
-}
+export { merchantOf }
 
 /**
  * 拆分分析页的关键字：空格、逗号、顿号、竖线都可分隔，多个关键字之间是「或」。
@@ -227,27 +263,35 @@ export interface Drill {
   /** null 表示「未分类」 */
   categoryId?: number | null
   merchant?: string
+  /** 标签名；null 表示「未打标签」 */
+  tag?: string | null
   /** 跳到明细页时带上的搜索词（分析页关键字只有一个时） */
   query?: string
   /** 明细页复现不了这组筛选（如多个关键字），不提供跳转 */
   noLink?: boolean
 }
 
-export function matchDrill(t: Transaction, drill: Drill): boolean {
+export function matchDrill(t: Transaction, drill: Drill, resolveTags: TagResolver = ownTagsOnly): boolean {
   if (t.date < drill.start || t.date > drill.end) return false
   const type = statType(t)
   if (drill.type ? type !== drill.type : !type) return false
   if (drill.categoryId === null && t.categoryId !== undefined) return false
   if (typeof drill.categoryId === 'number' && t.categoryId !== drill.categoryId) return false
   if (drill.merchant !== undefined && merchantOf(t) !== drill.merchant) return false
+  if (drill.tag === null && resolveTags(t).length > 0) return false
+  if (typeof drill.tag === 'string' && !resolveTags(t).includes(drill.tag)) return false
   return true
 }
 
 /** 明细页带筛选条件的链接，例如 #/transactions?month=2026-11&type=expense&category=1 */
-export function transactionsHref(month: string, drill: Pick<Drill, 'type' | 'categoryId' | 'merchant' | 'query'>): string {
+export function transactionsHref(
+  month: string,
+  drill: Pick<Drill, 'type' | 'categoryId' | 'merchant' | 'query' | 'tag'>,
+): string {
   const params = new URLSearchParams({ month })
   if (drill.type) params.set('type', drill.type)
   if (typeof drill.categoryId === 'number') params.set('category', String(drill.categoryId))
+  if (drill.tag !== undefined) params.set('tag', drill.tag ?? UNTAGGED)
   if (drill.merchant) params.set('q', drill.merchant)
   else if (drill.query) params.set('q', drill.query)
   return `#/transactions?${params}`

@@ -10,6 +10,7 @@ import { MonthSwitcher } from '../components/transactions/MonthSwitcher'
 import { TransactionDetail } from '../components/transactions/TransactionDetail'
 import { TransactionList } from '../components/transactions/TransactionList'
 import { TransactionTable } from '../components/transactions/TransactionTable'
+import { useTags } from '../components/tags/useTags'
 import { Button } from '../components/ui/Button'
 import { Dialog } from '../components/ui/Dialog'
 import { useToast } from '../components/ui/toast-context'
@@ -20,6 +21,7 @@ import { daysLeftInMonth, monthBudgets } from '../lib/budget'
 import { useAssistantPage } from '../lib/ai/context'
 import { transactionsPageData } from '../lib/ai/pages'
 import { formatMonth, monthOf, today } from '../lib/date'
+import { withEffectiveTags } from '../lib/tags'
 import { filterTransactions, isFilterEmpty, parseTransactionsHash, type TransactionFilter } from '../lib/filter'
 import type { Account, Category, Transaction } from '../types'
 
@@ -44,11 +46,13 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   const transactions = useLiveQuery(() => listByMonth(db, month), [month], [])
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
   const totalBudget = useMemo(() => monthBudgets(budgets, transactions).total, [budgets, transactions])
-  const lookup = useMemo(() => makeLookup(categories, accounts), [categories, accounts])
+  const { tags, resolve } = useTags()
+  const lookup = useMemo(() => makeLookup(categories, accounts, resolve), [categories, accounts, resolve])
   const visible = useMemo(
-    () => filterTransactions(transactions, filter, categories),
-    [transactions, filter, categories],
+    () => filterTransactions(transactions, filter, categories, resolve),
+    [transactions, filter, categories, resolve],
   )
+  const tagNames = useMemo(() => tags.map((t) => t.name), [tags])
   const selected = transactions.find((t) => t.id === selectedId)
   const closeDetail = useCallback(() => setSelectedId(undefined), [])
 
@@ -72,7 +76,7 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
       filter,
       summary: summarize(filtered ? visible : transactions),
       totalCount: transactions.length,
-      visible,
+      visible: withEffectiveTags(visible, resolve),
       categories,
       accounts,
       budget: filtered ? undefined : totalBudget?.amount,
@@ -132,6 +136,7 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
             onChange={setFilter}
             categories={categories}
             accounts={accounts}
+            tags={tagNames}
             count={visible.length}
           />
         )}

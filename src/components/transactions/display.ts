@@ -1,18 +1,22 @@
 import { formatCents } from '../../lib/money'
+import { ownTagsOnly, type TagResolver } from '../../lib/tags'
 import type { Account, Category, Transaction } from '../../types'
 
 /** 列表、表格和详情共用的展示文案 */
 export interface Lookup {
   category: (id: number | undefined) => Category | undefined
   account: (id: number | undefined) => Account | undefined
+  /** 实际生效的标签（单笔标签优先，否则沿用商户标签） */
+  tags: TagResolver
 }
 
-export function makeLookup(categories: Category[], accounts: Account[]): Lookup {
+export function makeLookup(categories: Category[], accounts: Account[], tags: TagResolver = ownTagsOnly): Lookup {
   const categoryById = new Map(categories.map((c) => [c.id, c]))
   const accountById = new Map(accounts.map((a) => [a.id, a]))
   return {
     category: (id) => (id === undefined ? undefined : categoryById.get(id)),
     account: (id) => (id === undefined ? undefined : accountById.get(id)),
+    tags,
   }
 }
 

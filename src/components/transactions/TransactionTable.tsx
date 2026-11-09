@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react'
 import type { Transaction } from '../../types'
 import { CategoryIcon } from '../CategoryIcon'
+import { TagChips } from '../tags/TagChips'
 import { accountLabel, amountClass, signedAmount, titleOf, type Lookup } from './display'
 import { SourceBadge } from './SourceBadge'
 
@@ -34,7 +35,7 @@ export function TransactionTable({ transactions, lookup, selectedId, onOpen }: P
           <tr className="t-caption text-tertiary">
             <th scope="col">日期</th>
             <th scope="col">分类</th>
-            <th scope="col">备注 / 商户</th>
+            <th scope="col">备注 / 商户 / 标签</th>
             <th scope="col">账户</th>
             <th scope="col">来源</th>
             <th scope="col" className="num">
@@ -61,7 +62,10 @@ export function TransactionTable({ transactions, lookup, selectedId, onOpen }: P
                   {titleOf(t, lookup)}
                 </span>
               </td>
-              <td className="tx-table-note">{[t.note, t.merchant].filter(Boolean).join(' · ') || '—'}</td>
+              <td className="tx-table-note">
+                {[t.note, t.merchant].filter(Boolean).join(' · ') || '—'}
+                <TagChips tags={lookup.tags(t)} inherited={lookup.tags.origin(t) === 'merchant'} />
+              </td>
               <td className="text-secondary nowrap">{accountLabel(t, lookup)}</td>
               <td>
                 <SourceBadge source={t.source} />

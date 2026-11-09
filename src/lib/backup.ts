@@ -8,6 +8,8 @@ export const BACKUP_TABLES = [
   'rules',
   'importBatches',
   'importTemplates',
+  'tags',
+  'tagRules',
 ] as const
 
 export type BackupTable = (typeof BACKUP_TABLES)[number]
@@ -20,6 +22,8 @@ export const BACKUP_TABLE_LABELS: Record<BackupTable, string> = {
   rules: '规则',
   importBatches: '导入记录',
   importTemplates: '映射模板',
+  tags: '标签',
+  tagRules: '商户标签',
 }
 
 export const BACKUP_APP = 'taozhubu'
@@ -54,6 +58,8 @@ const VALIDATORS: Record<BackupTable, (r: Row) => boolean> = {
   rules: (r) => isStr(r.keyword) && isInt(r.categoryId),
   importBatches: (r) => isStr(r.fileName) && isInt(r.createdAt),
   importTemplates: (r) => isStr(r.name) && Array.isArray(r.headers) && Array.isArray(r.columns),
+  tags: (r) => isStr(r.name),
+  tagRules: (r) => isStr(r.merchant) && Array.isArray(r.tags) && (r.tags as unknown[]).every(isStr),
 }
 
 export interface ParsedBackup {

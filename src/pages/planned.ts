@@ -8,7 +8,7 @@ export interface PlannedPage {
 }
 
 /** 未实现页面的计划说明，与 docs/web-roadmap.md 保持一致 */
-export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'analysis' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import' | 'rules' | 'login'>, PlannedPage> = {
+export const PLANNED_PAGES: Record<Exclude<RouteName, 'transactions' | 'analysis' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import' | 'rules' | 'tags' | 'login'>, PlannedPage> = {
   api: {
     title: '开放接口',
     milestone: '规划中',

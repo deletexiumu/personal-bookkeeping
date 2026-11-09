@@ -18,6 +18,8 @@ export const SYNC_TABLES = [
   'budgets',
   'rules',
   'importTemplates',
+  'tags',
+  'tagRules',
 ] as const
 
 export type SyncTable = (typeof SYNC_TABLES)[number]

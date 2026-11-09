@@ -1,6 +1,6 @@
 import { Search, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { isFilterEmpty, SOURCE_LABEL, type TransactionFilter } from '../../lib/filter'
+import { isFilterEmpty, SOURCE_LABEL, UNTAGGED, type TransactionFilter } from '../../lib/filter'
 import type { Account, Category, TransactionSource, TransactionType } from '../../types'
 import { Kbd } from '../ui/Badge'
 
@@ -9,6 +9,8 @@ interface Props {
   onChange: (filter: TransactionFilter) => void
   categories: Category[]
   accounts: Account[]
+  /** 可选的标签 */
+  tags: string[]
   /** 筛选后的笔数 */
   count: number
 }
@@ -22,7 +24,7 @@ const TYPE_OPTIONS: { value: TransactionType; label: string }[] = [
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
 /** 明细工具栏（D01）：搜索（⌘K / Ctrl+K 或 /）+ 类型、账户、分类、来源筛选 */
-export function FilterBar({ filter, onChange, categories, accounts, count }: Props) {
+export function FilterBar({ filter, onChange, categories, accounts, tags, count }: Props) {
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -120,6 +122,21 @@ export function FilterBar({ filter, onChange, categories, accounts, count }: Pro
           {(Object.keys(SOURCE_LABEL) as TransactionSource[]).map((s) => (
             <option key={s} value={s}>
               {SOURCE_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        <select
+          className="filter-select"
+          aria-label="标签"
+          data-active={filter.tag ? '' : undefined}
+          value={filter.tag ?? ''}
+          onChange={(e) => set({ tag: e.target.value || undefined })}
+        >
+          <option value="">全部标签</option>
+          <option value={UNTAGGED}>未打标签</option>
+          {[...new Set([...tags, ...(filter.tag && filter.tag !== UNTAGGED ? [filter.tag] : [])])].map((t) => (
+            <option key={t} value={t}>
+              #{t}
             </option>
           ))}
         </select>

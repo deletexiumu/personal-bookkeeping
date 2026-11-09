@@ -5,7 +5,7 @@ import type { RouteName } from '../app/router'
 import { PLANNED_PAGES } from './planned'
 
 /** 尚未实现的一级页面：说明所属里程碑和计划能力，见 docs/web-roadmap.md */
-export function PlaceholderPage({ route }: { route: Exclude<RouteName, 'transactions' | 'analysis' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import' | 'rules' | 'login'> }) {
+export function PlaceholderPage({ route }: { route: Exclude<RouteName, 'transactions' | 'analysis' | 'settings' | 'accounts' | 'categories' | 'budget' | 'import' | 'rules' | 'tags' | 'login'> }) {
   const plan = PLANNED_PAGES[route]
   const Icon = SIDEBAR_ITEMS.find((item) => item.route === route)?.icon
   return (

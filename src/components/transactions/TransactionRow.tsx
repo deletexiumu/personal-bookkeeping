@@ -18,7 +18,8 @@ interface Props {
 export function TransactionRow({ transaction: t, lookup, onOpen, onDelete }: Props) {
   const isTransfer = t.type === 'transfer'
   const title = titleOf(t, lookup)
-  const sub = (isTransfer ? [accountLabel(t, lookup), t.note, t.time] : [t.note || t.merchant, t.time])
+  const tags = lookup.tags(t).map((tag) => `#${tag}`).join(' ')
+  const sub = (isTransfer ? [accountLabel(t, lookup), t.note, t.time] : [tags, t.note || t.merchant, t.time])
     .filter(Boolean)
     .join(' · ')
   const account = lookup.account(t.accountId)?.name ?? '未知账户'

@@ -1,12 +1,16 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { db } from '../../db'
+import { setMerchantTags } from '../../db/tags'
 import { updateTransaction, type TransactionPatch } from '../../db/transactions'
 import { evaluateAmount, normalizeExpression } from '../../lib/expression'
 import { formatCents } from '../../lib/money'
-import { formatTags, parseTags } from '../../lib/tags'
+import { merchantOf } from '../../lib/merchant'
+import { formatTags, normalizeTags } from '../../lib/tags'
 import type { Account, Category, Transaction } from '../../types'
 import { CategoryIcon } from '../CategoryIcon'
+import { TagPicker } from '../tags/TagPicker'
+import { useTags } from '../tags/useTags'
 import { Button, IconButton } from '../ui/Button'
 import { Kbd } from '../ui/Badge'
 import { useToast } from '../ui/toast-context'
@@ -46,11 +50,17 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
   const [date, setDate] = useState(t.date)
   const [time, setTime] = useState(t.time ?? '')
   const [merchant, setMerchant] = useState(t.merchant ?? '')
-  const [tags, setTags] = useState(() => formatTags(t.tags))
+  const [tags, setTags] = useState<string[]>(() => t.tags ?? [])
+  // 勾选后，选的标签存为整个商户的标签（这一笔不再单独打标签，沿用商户标签）
+  const [forMerchant, setForMerchant] = useState(false)
+  const tagData = useTags()
   const [note, setNote] = useState(t.note ?? '')
   const [excluded, setExcluded] = useState(!!t.excluded)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const merchantKey = merchantOf({ merchant: merchant.trim() || undefined, note: note.trim() || undefined })
+  const inheritedTags = tagData.resolve.merchantTags(merchantKey)
 
   // 归档的分类 / 账户不再可选，但这笔记录当前用的仍然显示
   const categoryOptions = categories.filter((c) => c.type === type && (!c.archived || c.id === t.categoryId))
@@ -91,7 +101,8 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
       setError('请选择分类')
       return
     }
-    const tagList = parseTags(tags)
+    const tagList = normalizeTags(tags)
+    const saveForMerchant = forMerchant && !!merchantKey && !!tagList
     const patch: TransactionPatch = {
       type,
       amount: result.cents,
@@ -100,14 +111,16 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
       time: time || undefined,
       merchant: merchant.trim() || undefined,
       note: note.trim() || undefined,
-      tags: tagList.length > 0 ? tagList : undefined,
+      tags: saveForMerchant ? undefined : tagList,
       excluded: !isTransfer && excluded ? true : undefined,
       ...(isTransfer ? { transferAccountId: toAccountId } : { categoryId: selectedCategory }),
     }
     setSaving(true)
     try {
       await updateTransaction(db, t.id, patch)
+      if (saveForMerchant) await setMerchantTags(db, merchantKey, tagList)
       setError('')
+      setForMerchant(false)
       toast.show({ message: '已保存' })
       if (variant === 'dialog') onClose()
     } catch (err) {
@@ -209,10 +222,23 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
           <span className="field-label">商户</span>
           <input className="input" value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="如：盒马鲜生" />
         </label>
-        <label className="field">
-          <span className="field-label">标签</span>
-          <input className="input" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="#家庭 #周末" />
-        </label>
+        <TagPicker
+          value={tags}
+          onChange={setTags}
+          options={tagData.tags}
+          placeholder={inheritedTags ? `沿用商户标签 ${formatTags(inheritedTags)}` : '还没有标签'}
+        />
+        {merchantKey && (
+          <label className="check-field t-body-s" title="这个商户的流水都带上这些标签，包括以后导入的；单笔自己打了标签的以单笔为准">
+            <input
+              type="checkbox"
+              checked={forMerchant}
+              disabled={tags.length === 0}
+              onChange={(e) => setForMerchant(e.target.checked)}
+            />
+            设为「{merchantKey}」的商户标签（同商户的都生效，含以后导入的）
+          </label>
+        )}
         <label className="field">
           <span className="field-label">备注</span>
           <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />

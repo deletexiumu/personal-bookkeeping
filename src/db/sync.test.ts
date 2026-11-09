@@ -165,6 +165,9 @@ describe('从 v6 升级到 v7', () => {
     expect(before?.data.categories).toHaveLength(3)
     expect(before?.data.categories[0]).not.toHaveProperty('uid')
     expect(before?.data.transactions).toHaveLength(1)
+    // v8 补上内置标签，不推送
+    expect(await upgraded.tags.where('name').equals('游戏').count()).toBe(1)
+    expect(await upgraded.tags.where('dirty').equals(1).count()).toBe(0)
     await upgraded.delete()
   })
 })
