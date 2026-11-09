@@ -160,6 +160,8 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
 
   const isRefund = (cells: string[]) =>
     ['category', 'kind', 'note', 'status'].some((f) => /退款/.test(joined(cells, f as FieldKey)))
+  const isRepayment = (cells: string[]) =>
+    ['category', 'kind', 'note', 'merchant'].some((f) => /还款/.test(joined(cells, f as FieldKey)))
 
   for (const { line, cells } of table.rows) {
     const dt = parseDateCell(first(cells, 'date'))
@@ -194,6 +196,10 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
         // 支付宝把退款记为「不计收支」，按收入入账，否则原来那笔支出会一直多算
         if (direction === 'neutral' && isRefund(cells)) {
           type = 'income'
+          skipReason = undefined
+        } else if (direction === 'neutral' && isRepayment(cells)) {
+          // 花呗、借呗、信用卡还款也是「不计收支」，按支出入账：还的是之前用掉的钱，没导入那边的账单时这是唯一的记录
+          type = 'expense'
           skipReason = undefined
         }
       }
