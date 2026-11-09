@@ -1,6 +1,6 @@
 import { shiftDate } from '../lib/date'
 import { describe } from '../lib/merchant'
-import { flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
+import { backfillOf, flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
 import { purchaseEntry, REFUND_WINDOW_DAYS, refundEntry } from '../lib/import/refund'
 import type { ImportBatch, ImportSource, MergedEntry, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
@@ -55,6 +55,7 @@ export function sourceLabelOf(t: Transaction, batch: ImportBatch | undefined): s
 
 /**
  * 把勾选的预览行写入账本并记一条导入批次，返回批次 ID。
+ * 按单号认出的重复行带着 backfill 时，给已有那条补上空字段（见 backfillOf），不论勾没勾选。
  * 能合并的行（mergeWith）不新增，而是更新已有那条（见 mergeTransaction）；已有那条被删了或已不能合并时照常新增。
  * 退款（refundOf）：全额退款时退款照常写入，它和原支出都标为不计收支；部分退款不写入，原支出减掉退款金额，
  * 退款记进原支出的明细。原支出已变（被删、金额不对）时退款按普通收入写入。
@@ -162,6 +163,19 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         mergedRows++
       }
     }
+    // 重复导入同一份钱包账单：给已有流水补上空着的字段（不论这一行勾没勾选）；按保存时的流水再算一次，已有的值不改
+    let filled = 0
+    for (const item of input.items) {
+      const dup = item.duplicateOf
+      if (!item.backfill || !dup || dup === 'batch') continue
+      const current = await load(dup.id)
+      const patch = current && backfillOf(current, item.row)
+      if (!current || !patch) continue
+      const next: Transaction = { ...current, ...patch }
+      for (const key of Object.keys(next) as (keyof Transaction)[]) if (next[key] === undefined) delete next[key]
+      save(next)
+      filled++
+    }
     const merges = [...pending.values()]
     const batchId = (await db.importBatches.add({
       source: input.source,
@@ -169,6 +183,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
       rowCount: input.rowCount,
       importedCount: drafts.length,
       ...(mergedRows > 0 ? { mergedCount: mergedRows } : {}),
+      ...(filled > 0 ? { filledCount: filled } : {}),
       createdAt: now,
       status: 'done',
     })) as number

@@ -35,6 +35,8 @@ export interface PreviewItem {
   refundDuplicate?: boolean
   /** 这一行是退款，对上了原支出（已有流水或本批次前面的行） */
   refundOf?: RefundTarget & { purchase: Purchase }
+  /** 重复导入同一份钱包账单：按单号认出的已有流水上要补的空字段（不论这一行勾没勾选，入账时都补） */
+  backfill?: Partial<Transaction>
   /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
   declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer' | 'transferPair' | 'refundOf'>
   selected: boolean
@@ -339,6 +341,38 @@ export function findMergeTarget(
     }
   }
   return best
+}
+
+/** 补全时显示的字段名 */
+export const BACKFILL_LABELS: Partial<Record<keyof Transaction, string>> = {
+  goods: '商品说明',
+  merchantOrderNo: '商户单号',
+  externalId: '订单号',
+  payMethod: '付款方式',
+  merchant: '商户',
+  time: '时间',
+}
+
+/**
+ * 重新导入同一份钱包账单时，给按单号认出的已有流水补上空着的字段：商品说明、商户单号、付款方式、订单号、商户、时间。
+ * 已有的值一律不改，金额、分类、标签也不动。早先导入时商品说明写进了备注、备注又没改过的，补上商品说明后备注只留备注列。
+ * 按单号对上的只有这条流水自己的单号，或合并进来的钱包明细（不含退款和原支出那两种明细）。
+ */
+export function backfillOf(t: Transaction, row: ParsedRow): Partial<Transaction> | undefined {
+  if (!row.ref) return undefined
+  const own = t.externalId === row.ref
+  if (!own && !t.merged?.some((m) => m.ref === row.ref && !m.refund && !m.purchase)) return undefined
+  const patch: Partial<Transaction> = {}
+  if (!t.externalId) patch.externalId = row.ref
+  if (!t.time && row.time) patch.time = row.time
+  if (!t.merchant && row.merchant) patch.merchant = row.merchant
+  if (!t.goods && row.goods) {
+    patch.goods = row.goods
+    if (t.note && normalizeText(t.note) === normalizeText(row.note)) patch.note = row.remark
+  }
+  if (!t.merchantOrderNo && row.merchantRef) patch.merchantOrderNo = row.merchantRef
+  if (!t.payMethod && row.accountName) patch.payMethod = row.accountName
+  return Object.keys(patch).length > 0 ? patch : undefined
 }
 
 /** 钱包提现、转出到银行卡的收入与银行入账合并时，改成从钱包账户到银行账户的转账 */
@@ -726,6 +760,12 @@ export function buildPreview(rows: ParsedRow[], ctx: PreviewContext): PreviewIte
     item.refundOf = { tx: purchase.tx, key: purchase.key, full, purchase: { ...purchase } }
     if (full) fullyRefunded.add(purchase)
     else purchase.amount -= item.row.amount
+  }
+  for (const item of items) {
+    if (item.duplicateOf && item.duplicateOf !== 'batch' && !item.refundDuplicate) {
+      const patch = backfillOf(item.duplicateOf, item.row)
+      if (patch) item.backfill = patch
+    }
   }
   for (const item of items) {
     const hit = classify(item.row, ctx)

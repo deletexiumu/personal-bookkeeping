@@ -1,6 +1,6 @@
 import { FileCheck2 } from 'lucide-react'
 import { useState } from 'react'
-import { isNeutral, statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
+import { BACKFILL_LABELS, isNeutral, statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
 import { ruleFromRow } from '../../lib/import/rules'
 import { normalizeText } from '../../lib/import/similarity'
 import type { RowError } from '../../lib/import/table'
@@ -48,7 +48,9 @@ function duplicateText(item: PreviewItem): string {
   if (dup === 'batch') return '与本文件中前面的行相同'
   if (dup && item.refundDuplicate) return `这笔退款已并进 ${shortDate(dup.date)} 的「${dup.merchant ?? describe(dup) ?? '无备注'}」`
   if (!dup) return ''
-  return `与 ${shortDate(dup.date)} ${dup.source === 'import' ? '已导入的' : '手记的'}一笔重复`
+  const same = `与 ${shortDate(dup.date)} ${dup.source === 'import' ? '已导入的' : '手记的'}一笔重复`
+  const fields = Object.keys(item.backfill ?? {}).flatMap((k) => BACKFILL_LABELS[k as keyof typeof BACKFILL_LABELS] ?? [])
+  return fields.length > 0 ? `${same}，入账时给那条补上${fields.join('、')}` : same
 }
 
 function refundText(item: PreviewItem): string {
@@ -71,6 +73,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
   const dates = items.map((i) => i.row.date).sort()
   const income = items.filter((i) => i.row.type === 'income').length
   const pending = summary.duplicate + summary.uncategorized
+  const fillCount = items.filter((i) => i.backfill).length
 
   const visible = items.filter((item) => {
     const status = statusOf(item)
@@ -291,10 +294,11 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
             <p className="t-caption text-tertiary">{summary.selectedUncategorized} 条将以「未分类」入账</p>
           )}
           {rememberCount > 0 && <p className="t-caption text-tertiary">入账后记住 {rememberCount} 条分类规则</p>}
+          {fillCount > 0 && <p className="t-caption text-tertiary">另给 {fillCount} 条已导入过的流水补上商品说明、单号等空字段</p>}
         </div>
         <div className="import-actions">
           <Button onClick={onBack}>上一步</Button>
-          <Button variant="primary" disabled={summary.selected === 0 || busy} onClick={onCommit}>
+          <Button variant="primary" disabled={(summary.selected === 0 && fillCount === 0) || busy} onClick={onCommit}>
             确认导入
           </Button>
         </div>

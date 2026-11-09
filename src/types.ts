@@ -149,6 +149,8 @@ export interface ImportBatch extends SyncMeta {
   importedCount: number
   /** 与已有流水合并的条数（不新增记录） */
   mergedCount?: number
+  /** 重复导入时给已有流水补上空字段（商品说明、单号等）的条数 */
+  filledCount?: number
   createdAt: number
   status: 'done' | 'reverted'
   revertedAt?: number

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { PreviewItem } from '../lib/import/preview'
+import { buildPreview, type PreviewItem } from '../lib/import/preview'
 import { commitImport, listImportBatches, loadDedupeCandidates, revertImport } from './imports'
 import { BookkeepingDB } from './index'
 import { addTransaction } from './transactions'
@@ -42,6 +42,51 @@ describe('导入批次', () => {
     expect(rows.map((r) => r.externalId)).toEqual(['R1', 'R2'])
     expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 2 })
     expect(await db.transactions.where('externalId').equals('R0').count()).toBe(1)
+  })
+
+  it('重复导入同一份钱包账单：按单号给已有流水补上空字段，不论勾没勾选；已有的值和分类不改', async () => {
+    const oldId = await addTransaction(db, {
+      type: 'expense', amount: 3117, accountId: 3, date: '2026-10-28', merchant: '淘宝闪购', note: '盒马鲜生(中铁西城店)', externalId: 'A1', categoryId: 1, source: 'import',
+    })
+    const editedId = await addTransaction(db, { type: 'expense', amount: 500, accountId: 3, date: '2026-10-28', note: '我改过的备注', externalId: 'A2', payMethod: '花呗', source: 'import' })
+    const [old, edited] = [(await db.transactions.get(oldId))!, (await db.transactions.get(editedId))!]
+    const rowOf = (ref: string, goods: string, merchantRef: string) =>
+      ({ line: 2, date: '2026-10-28', time: '18:36', type: 'expense' as const, amount: 3117, merchant: '淘宝闪购', goods, note: goods, ref, merchantRef, accountName: '余额宝' })
+    const items = buildPreview([rowOf('A1', '盒马鲜生(中铁西城店)', 'M1'), rowOf('A2', '永辉超市', 'M2')], {
+      categories: [], merchantHistory: new Map(), accounts: [], defaultAccountId: 3, existing: [old, edited], source: 'alipay',
+    })
+    expect(items.map((i) => [i.duplicateOf, i.selected])).toEqual([[old, false], [edited, false]])
+    const batchId = await commitImport(db, { source: 'alipay', fileName: 'alipay.csv', rowCount: 2, items })
+    // 原来商品说明写在备注里：补上商品说明后备注清空；时间、商户单号、付款方式补上
+    const filled = (await db.transactions.get(oldId))!
+    expect(filled).toMatchObject({ goods: '盒马鲜生(中铁西城店)', merchantOrderNo: 'M1', payMethod: '余额宝', time: '18:36', categoryId: 1, amount: 3117 })
+    expect(filled.note).toBeUndefined()
+    // 改过的备注保留，已有的付款方式不改
+    expect(await db.transactions.get(editedId)).toMatchObject({ goods: '永辉超市', note: '我改过的备注', payMethod: '花呗', merchantOrderNo: 'M2' })
+    expect(await db.importBatches.get(batchId)).toMatchObject({ importedCount: 0, filledCount: 2 })
+    expect(await db.transactions.count()).toBe(2)
+    // 再导一次没有可补的
+    const again = buildPreview([rowOf('A1', '盒马鲜生(中铁西城店)', 'M1')], {
+      categories: [], merchantHistory: new Map(), accounts: [], defaultAccountId: 3, existing: [filled], source: 'alipay',
+    })
+    expect(again[0].backfill).toBeUndefined()
+  })
+
+  it('补全也认合并进来的钱包明细（如已合并成转账的那条），没有订单号时补上', async () => {
+    const id = await addTransaction(db, {
+      type: 'transfer', amount: 220000, accountId: 5, transferAccountId: 3, date: '2026-11-01', merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝', source: 'import',
+      merged: [
+        { label: '中信银行流水', date: '2026-11-01', note: '支付宝', bank: true },
+        { label: '支付宝账单', date: '2026-11-01', note: '余额宝-单次转入', ref: 'A9' },
+      ],
+    })
+    const t = (await db.transactions.get(id))!
+    const row = { line: 2, date: '2026-11-01', time: '15:43', type: 'income' as const, amount: 220000, merchant: '余额宝', goods: '余额宝-单次转入', note: '余额宝-单次转入', ref: 'A9', skipReason: '不计收支' }
+    const [it] = buildPreview([row], { categories: [], merchantHistory: new Map(), accounts: [], defaultAccountId: 3, existing: [t], source: 'alipay' })
+    expect(it.duplicateOf).toBe(t)
+    await commitImport(db, { source: 'alipay', fileName: 'alipay.csv', rowCount: 1, items: [it] })
+    // 商户、备注已有，不改
+    expect(await db.transactions.get(id)).toMatchObject({ externalId: 'A9', goods: '余额宝-单次转入', time: '15:43', merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝' })
   })
 
   it('能合并的行更新已有流水，不新增，并记合并条数', async () => {
