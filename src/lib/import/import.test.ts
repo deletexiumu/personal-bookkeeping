@@ -459,6 +459,22 @@ describe('钱包账单与银行流水合并', () => {
     expect(items[0].mergeWith).toBe(t)
   })
 
+  it('钱包 × 银行流水合并：商品说明、商户单号、付款方式补到流水上，备注只放备注列', () => {
+    const bank = bankTx({ merchant: '拼多多平台商户' })
+    const walletRow = row({
+      ref: 'A9', merchant: '拼多多平台商户', goods: '商户单号XP01', note: '商户单号XP01 · 帮朋友买的', remark: '帮朋友买的',
+      merchantRef: 'XP01', accountName: '招商银行储蓄卡(1234)',
+    })
+    const items = buildPreview([walletRow], { ...ctx([bank], 'alipay') })
+    expect(items[0].mergeWith).toBe(bank)
+    const next = mergeTransaction(bank, items[0], { ...labels, incoming: '支付宝账单', existing: '招商银行流水' })
+    expect(next).toMatchObject({ externalId: 'A9', goods: '商户单号XP01', note: '帮朋友买的', merchantOrderNo: 'XP01', payMethod: '招商银行储蓄卡(1234)' })
+    // 银行摘要留在合并明细里
+    expect(next.merged?.[0]).toMatchObject({ note: '快捷支付', bank: true })
+    // 已合并的流水再导入同一份钱包账单：按单号认出重复
+    expect(buildPreview([walletRow], ctx([next], 'alipay'))[0].duplicateOf).toBe(next)
+  })
+
   it('一笔已有流水只合并一次', () => {
     const items = buildPreview([row({ merchant: '家和鲜包点', note: '快捷支付' }), row({ merchant: '家和鲜包点', note: '快捷支付' })], ctx([walletTx({})]))
     expect(items.map((i) => i.mergeWith?.id)).toEqual([300, undefined])
@@ -475,6 +491,19 @@ describe('本人账户间挪钱', () => {
   const self = (patch: Partial<Transaction>) => tx({ id: 500, source: 'import', excluded: true, ...patch })
   const labels = { incoming: '招商银行流水', existing: '中信银行流水', accountName: (id: number) => accounts.find((a) => a.id === id)?.name }
   const ctx = (existing: Transaction[], defaultAccountId: number) => ({ categories, merchantHistory: new Map(), accounts, defaultAccountId, existing })
+
+  it('入账时商品说明、商户单号、付款方式单独存，备注只放备注列', () => {
+    const item: PreviewItem = {
+      key: 0,
+      row: row({ ref: 'A1', merchant: '肯德基', goods: '宅急送订单', remark: '加班餐', note: '宅急送订单 · 加班餐', merchantRef: 'T001', accountName: '花呗' }),
+      accountId: 3,
+      selected: true,
+    }
+    expect(toTransaction(item)).toMatchObject({ goods: '宅急送订单', note: '加班餐', externalId: 'A1', merchantOrderNo: 'T001', payMethod: '花呗' })
+    // 没有单独的商品说明列（如银行流水）时，摘要照旧是备注
+    expect(toTransaction({ ...item, row: row({ note: '快捷支付' }) })).toMatchObject({ note: '快捷支付' })
+    expect(toTransaction({ ...item, row: row({ note: '快捷支付' }) }).goods).toBeUndefined()
+  })
 
   it('勾选入账的不计收支 / 本人账户互转行记为不计收支', () => {
     const item: PreviewItem = { key: 0, row: row({ skipReason: '不计收支', merchant: '余额宝' }), accountId: 2, selected: true }
@@ -551,6 +580,57 @@ describe('本人账户间挪钱', () => {
     const out = self({ accountId: 5, type: 'income', amount: 1000, note: '证券提现' })
     const inRow = row({ type: 'expense', amount: 1000, note: '银证转账', skipReason: '本人账户互转' })
     expect(findTransferPair(inRow, [out], 2)).toBe(out)
+  })
+
+  it('余额宝用中信卡单次转入：先导入中信流水，再导入支付宝账单，合并成中信 → 支付宝的转账，带上商品说明和订单号', () => {
+    const withAlipay: Account[] = [...accounts, { id: 3, name: '支付宝', type: 'alipay' }]
+    const bank = tx({ id: 800, source: 'import', accountId: 5, type: 'expense', amount: 220000, merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝', date: '2026-11-01' })
+    const alipayRow = row({
+      type: 'income', amount: 220000, date: '2026-11-01', time: '15:43', ref: '2026110101913', merchant: '余额宝',
+      goods: '余额宝-单次转入', note: '余额宝-单次转入', accountName: '中信银行储蓄卡(1145)', skipReason: '不计收支',
+    })
+    const items = buildPreview([alipayRow], { ...ctx([bank], 5), accounts: withAlipay, source: 'alipay' })
+    expect(statusOf(items[0])).toBe('merge')
+    expect(items[0]).toMatchObject({ transferPair: true, selected: true, mergeAsTransfer: { from: 5, to: 3 } })
+    const next = mergeTransaction(bank, items[0], { ...labels, incoming: '支付宝账单', existing: '中信银行流水' })
+    expect(next).toMatchObject({
+      type: 'transfer', accountId: 5, transferAccountId: 3, amount: 220000, time: '15:43',
+      merchant: '余额宝', goods: '余额宝-单次转入', externalId: '2026110101913', payMethod: '中信银行储蓄卡(1145)',
+    })
+    expect(next.note).toBeUndefined()
+    expect(next.categoryId).toBeUndefined()
+    expect(next.merged?.[0]).toMatchObject({ merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝', bank: true })
+    // 重复导入任一份账单都算重复
+    expect(buildPreview([alipayRow], { ...ctx([next], 5), accounts: withAlipay, source: 'alipay' })[0].duplicateOf).toBe(next)
+    const bankRow = row({ type: 'expense', amount: 220000, date: '2026-11-01', merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝' })
+    expect(buildPreview([bankRow], { ...ctx([next], 5), accounts: withAlipay })[0].duplicateOf).toBe(next)
+  })
+
+  it('余额宝用中信卡单次转入：先导入支付宝账单（勾选入账为不计收支），再导入中信流水，也合并成转账', () => {
+    const withAlipay: Account[] = [...accounts, { id: 3, name: '支付宝', type: 'alipay' }]
+    const alipay = self({ accountId: 5, type: 'income', amount: 220000, externalId: 'A1', merchant: '余额宝', goods: '余额宝-单次转入' })
+    const bankRow = row({ type: 'expense', amount: 220000, merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝' })
+    const items = buildPreview([bankRow], { ...ctx([alipay], 5), accounts: withAlipay, sourceOf: () => 'alipay' as const })
+    expect(items[0]).toMatchObject({ transferPair: true, mergeAsTransfer: { from: 5, to: 3 } })
+  })
+
+  it('余额宝转出到银行卡（付款方式写的是这张卡）与银行入账合并成支付宝 → 招行的转账', () => {
+    const withAlipay: Account[] = [...accounts, { id: 3, name: '支付宝', type: 'alipay' }]
+    const bank = tx({ id: 801, source: 'import', accountId: 2, type: 'income', amount: 50000, merchant: '支付宝', note: '网联收款' })
+    const alipayRow = row({ type: 'income', amount: 50000, ref: 'A2', merchant: '招商银行', note: '余额宝-转出到银行卡', goods: '余额宝-转出到银行卡', skipReason: '不计收支' })
+    const items = buildPreview([alipayRow], { ...ctx([bank], 2), accounts: withAlipay, source: 'alipay' })
+    expect(items[0]).toMatchObject({ transferPair: true, mergeAsTransfer: { from: 3, to: 2 } })
+  })
+
+  it('用银行卡买基金不是本人账户间挪钱：不配对，银行那笔照旧是支出；没有钱包账户时也不配对', () => {
+    const withAlipay: Account[] = [...accounts, { id: 3, name: '支付宝', type: 'alipay' }]
+    const bank = tx({ id: 802, source: 'import', accountId: 2, type: 'expense', amount: 10000, merchant: '蚂蚁（杭州）基金销售有限公司', note: '支付宝' })
+    const fundRow = row({ type: 'income', amount: 10000, ref: 'A3', merchant: '蚂蚁财富-蚂蚁（杭州）基金销售有限公司', note: '蚂蚁财富-南方纳斯达克100指数(QDII)A-买入', skipReason: '不计收支' })
+    expect(buildPreview([fundRow], { ...ctx([bank], 2), accounts: withAlipay, source: 'alipay' })[0].mergeWith).toBeUndefined()
+    const topUp = row({ type: 'income', amount: 10000, ref: 'A4', merchant: '余额宝', note: '余额宝-单次转入', skipReason: '不计收支' })
+    expect(buildPreview([topUp], { ...ctx([bank], 2), source: 'alipay' })[0].mergeWith).toBeUndefined()
+    // 两边都是银行流水、在同一个账户上：不配对
+    expect(findTransferPair(row({ type: 'income', amount: 10000, note: '支付宝 余额宝', skipReason: '本人账户互转' }), [{ ...bank, excluded: true }], 2)).toBeUndefined()
   })
 
   it('找不到另一边时照旧忽略；勾选后按不计收支入账，不计入待分类', () => {

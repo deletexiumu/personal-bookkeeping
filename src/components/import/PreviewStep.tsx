@@ -5,6 +5,7 @@ import { ruleFromRow } from '../../lib/import/rules'
 import { normalizeText } from '../../lib/import/similarity'
 import type { RowError } from '../../lib/import/table'
 import { formatCents } from '../../lib/money'
+import { describe } from '../../lib/merchant'
 import type { Category } from '../../types'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -36,16 +37,16 @@ function shortDate(date: string) {
   return `${m}/${d}`
 }
 
-function describe(t: { date: string; source: string; merchant?: string; note?: string }): string {
-  const what = t.merchant ?? t.note
+function describeTx(t: { date: string; source: string; merchant?: string; goods?: string; note?: string }): string {
+  const what = t.merchant ?? describe(t)
   return `${shortDate(t.date)} ${t.source === 'import' ? '已导入的' : '手记的'}「${what ?? '无备注'}」`
 }
 
 function duplicateText(item: PreviewItem): string {
-  if (item.mergeWith) return `可能与 ${describe(item.mergeWith)}是同一笔，勾选后合并`
+  if (item.mergeWith) return `可能与 ${describeTx(item.mergeWith)}是同一笔，勾选后合并`
   const dup = item.duplicateOf
   if (dup === 'batch') return '与本文件中前面的行相同'
-  if (dup && item.refundDuplicate) return `这笔退款已并进 ${shortDate(dup.date)} 的「${dup.merchant ?? dup.note ?? '无备注'}」`
+  if (dup && item.refundDuplicate) return `这笔退款已并进 ${shortDate(dup.date)} 的「${dup.merchant ?? describe(dup) ?? '无备注'}」`
   if (!dup) return ''
   return `与 ${shortDate(dup.date)} ${dup.source === 'import' ? '已导入的' : '手记的'}一笔重复`
 }

@@ -1,5 +1,6 @@
 import type { KeyboardEvent } from 'react'
 import type { Transaction } from '../../types'
+import { describe } from '../../lib/merchant'
 import { CategoryIcon } from '../CategoryIcon'
 import { TagChips } from '../tags/TagChips'
 import { accountLabel, amountClass, signedAmount, titleOf, type Lookup } from './display'
@@ -63,7 +64,7 @@ export function TransactionTable({ transactions, lookup, selectedId, onOpen }: P
                 </span>
               </td>
               <td className="tx-table-note">
-                {[t.note, t.merchant].filter(Boolean).join(' · ') || '—'}
+                {[describe(t), t.merchant].filter(Boolean).join(' · ') || '—'}
                 <TagChips tags={lookup.tags(t)} inherited={lookup.tags.origin(t) === 'merchant'} />
               </td>
               <td className="text-secondary nowrap">{accountLabel(t, lookup)}</td>

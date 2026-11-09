@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react'
 import type { Transaction } from '../../types'
+import { describe } from '../../lib/merchant'
 import { CategoryIcon } from '../CategoryIcon'
 import { IconButton } from '../ui/Button'
 import { accountLabel, amountClass, signedAmount, titleOf, type Lookup } from './display'
@@ -19,7 +20,7 @@ export function TransactionRow({ transaction: t, lookup, onOpen, onDelete }: Pro
   const isTransfer = t.type === 'transfer'
   const title = titleOf(t, lookup)
   const tags = lookup.tags(t).map((tag) => `#${tag}`).join(' ')
-  const sub = (isTransfer ? [accountLabel(t, lookup), t.note, t.time] : [tags, t.note || t.merchant, t.time])
+  const sub = (isTransfer ? [accountLabel(t, lookup), describe(t), t.time] : [tags, describe(t) || t.merchant, t.time])
     .filter(Boolean)
     .join(' · ')
   const account = lookup.account(t.accountId)?.name ?? '未知账户'

@@ -49,8 +49,14 @@ export interface Transaction extends SyncMeta {
   source: TransactionSource
   /** 导入批次，用于整批撤销 */
   importBatchId?: number
-  /** 外部交易单号（账单导入），用于重复导入时精确去重 */
+  /** 外部交易单号 / 订单号（账单导入），用于重复导入时精确去重，也用来回账单里追溯 */
   externalId?: string
+  /** 账单里的商品说明（微信「商品」、支付宝「商品说明」），原样保留，不可编辑 */
+  goods?: string
+  /** 账单里的商户单号（微信「商户单号」、支付宝「商家订单号」），用于到商户那边追溯 */
+  merchantOrderNo?: string
+  /** 账单里的收 / 付款方式原文，如「中信银行储蓄卡(1145)」「花呗」 */
+  payMethod?: string
   /**
    * 不计收支：本人账户之间挪钱（余额宝转入、钱包提现等）又找不到另一边时，保留明细，不计入收入、支出、
    * 预算和分析。钱包账单导入的（有交易单号）也不计入账户余额，因为方向常常不可靠，见 computeBalances

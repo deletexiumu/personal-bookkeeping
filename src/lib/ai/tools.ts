@@ -166,6 +166,7 @@ export function transactionView(t: Transaction, n: Names) {
     account: n.account.get(t.accountId) ?? '未知账户',
     toAccount: t.type === 'transfer' ? (n.account.get(t.transferAccountId) ?? '未知账户') : undefined,
     merchant: t.merchant?.slice(0, 60) || undefined,
+    goods: t.goods?.slice(0, 80) || undefined,
     note: t.note?.slice(0, 80) || undefined,
     tags: t.tags?.length ? t.tags : undefined,
     excluded: t.excluded || undefined,

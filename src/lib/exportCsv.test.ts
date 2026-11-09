@@ -15,18 +15,18 @@ const accounts: Account[] = [
 const base = { accountId: 1, source: 'manual', createdAt: 0, updatedAt: 0 } as const
 const rows: Transaction[] = [
   { ...base, id: 2, type: 'expense', amount: 3250, categoryId: 1, date: '2026-11-04', time: '12:30', merchant: '星巴克', note: '拿铁, 大杯', tags: ['咖啡', '工作'] },
-  { ...base, id: 1, type: 'income', amount: 1_200_000, categoryId: 8, accountId: 2, date: '2026-11-01', note: '10 月工资', source: 'import' },
+  { ...base, id: 1, type: 'income', amount: 1_200_000, categoryId: 8, accountId: 2, date: '2026-11-01', note: '10 月工资', source: 'import', goods: '工资代发', externalId: 'A1', merchantOrderNo: 'M1' },
   { ...base, id: 3, type: 'transfer', amount: 50_000, accountId: 2, transferAccountId: 1, date: '2026-11-03', note: '取现' },
 ]
 
 describe('导出 CSV', () => {
   it('按日期排序，带 BOM，转账写出两端账户', () => {
     const csv = transactionsToCsv(rows, categories, accounts)
-    expect(csv.startsWith('﻿日期,时间,收/支,金额,分类,账户,转入账户,商户,备注,标签,来源\r\n')).toBe(true)
+    expect(csv.startsWith('﻿日期,时间,收/支,金额,分类,账户,转入账户,商户,备注,标签,来源,商品说明,订单号,商户单号\r\n')).toBe(true)
     expect(csv.split('\r\n').slice(1, 4)).toEqual([
-      '2026-11-01,,收入,12000.00,工资,银行卡,,,10 月工资,,导入',
-      '2026-11-03,,转账,500.00,,银行卡,现金,,取现,,手动',
-      '2026-11-04,12:30,支出,32.50,餐饮,现金,,星巴克,"拿铁, 大杯",咖啡 工作,手动',
+      '2026-11-01,,收入,12000.00,工资,银行卡,,,10 月工资,,导入,工资代发,A1,M1',
+      '2026-11-03,,转账,500.00,,银行卡,现金,,取现,,手动,,,',
+      '2026-11-04,12:30,支出,32.50,餐饮,现金,,星巴克,"拿铁, 大杯",咖啡 工作,手动,,,',
     ])
   })
 
@@ -42,7 +42,7 @@ describe('导出 CSV', () => {
     const { rows: parsed } = parseRows(table, mapping)
     const expense = parsed.find((r) => r.merchant === '星巴克')
     expect(expense).toMatchObject({ date: '2026-11-04', time: '12:30', type: 'expense', amount: 3250, categoryName: '餐饮', accountName: '现金' })
-    expect(parsed.find((r) => r.type === 'income')).toMatchObject({ amount: 1_200_000, categoryName: '工资' })
+    expect(parsed.find((r) => r.type === 'income')).toMatchObject({ amount: 1_200_000, categoryName: '工资', goods: '工资代发', remark: '10 月工资', ref: 'A1', merchantRef: 'M1' })
   })
 
   it('文件名', () => {

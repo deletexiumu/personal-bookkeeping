@@ -1,4 +1,5 @@
 import { shiftDate } from '../lib/date'
+import { describe } from '../lib/merchant'
 import { flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
 import { purchaseEntry, REFUND_WINDOW_DAYS, refundEntry } from '../lib/import/refund'
 import type { ImportBatch, ImportSource, MergedEntry, Transaction } from '../types'
@@ -121,7 +122,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
       if (item.transferPair) {
         const rowOut = flowOf(item.row, !!item.row.ref) === 'expense'
         const [out, inn] = rowOut ? [item.row.amount, current.amount] : [current.amount, item.row.amount]
-        const fee = transferFee(out, inn, item.row.note, current.note)
+        const fee = transferFee(out, inn, item.row.note, describe(current))
         if (fee) fees.push({ type: 'expense', amount: fee, accountId: merged.accountId, date: merged.date, time: merged.time, note: '提现手续费', source: 'import' })
       }
     }

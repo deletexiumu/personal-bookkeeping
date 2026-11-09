@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { db } from '../../db'
 import { setMerchantTags, setTransactionTags } from '../../db/tags'
 import { formatTags, type UntaggedGroup } from '../../lib/tags'
+import { describe } from '../../lib/merchant'
 import type { Tag } from '../../types'
 import { amountClass, signedAmount, titleOf, type Lookup } from '../transactions/display'
 import { Button } from '../ui/Button'
@@ -96,7 +97,7 @@ export function TagAssignDialog({ group, tags, lookup, onClose }: Props) {
                     <span className="tag-assign-main">
                       <span className="t-body-s">{titleOf(t, lookup)}</span>
                       <span className="t-caption text-tertiary">
-                        {[t.date, t.time, merchant ? t.note : undefined].filter(Boolean).join(' · ')}
+                        {[t.date, t.time, merchant ? describe(t) : undefined].filter(Boolean).join(' · ')}
                       </span>
                     </span>
                     <span className={`t-num-s ${amountClass(t)}`}>{signedAmount(t)}</span>

@@ -9,10 +9,12 @@ export type FieldKey =
   | 'direction'
   | 'merchant'
   | 'note'
+  | 'goods'
   | 'category'
   | 'account'
   | 'status'
   | 'ref'
+  | 'merchantRef'
   | 'kind'
 
 export const FIELD_LABELS: Record<FieldKey, string> = {
@@ -25,10 +27,12 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   direction: '收支方向',
   merchant: '商户 / 交易对方',
   note: '备注 / 摘要',
+  goods: '商品说明',
   category: '分类',
   account: '账户',
   status: '交易状态',
-  ref: '交易单号',
+  ref: '交易单号 / 订单号',
+  merchantRef: '商户单号',
   kind: '交易类型（仅用于分类）',
 }
 
@@ -41,10 +45,12 @@ export const FIELD_ORDER: FieldKey[] = [
   'direction',
   'merchant',
   'note',
+  'goods',
   'category',
   'account',
   'status',
   'ref',
+  'merchantRef',
   'kind',
   'ignore',
 ]
@@ -57,6 +63,9 @@ export const MULTI_FIELDS: ReadonlySet<FieldKey> = new Set(['note'])
  * 「时间」类表头要结合示例值判断是日期时间还是纯时间，见 autoMap。
  */
 export const HEADER_KEYWORDS: [FieldKey, RegExp][] = [
+  // 商户单号要在交易单号前面认，否则「商户单号」「商家订单号」会被当成交易单号
+  ['merchantRef', /商(户|家)(订)?单号/],
+  ['goods', /^商品(说明|名称|描述)?$/],
   ['ref', /(交易|订单|流水|商户)单?号|流水号|订单号|交易号/],
   ['direction', /^收\/支$|收支|借贷|资金流向|收付|方向/],
   ['expense', /支出(金额)?|借方(金额|发生额)?/],

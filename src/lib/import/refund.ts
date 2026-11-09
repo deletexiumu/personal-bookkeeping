@@ -1,3 +1,4 @@
+import { describe } from '../merchant'
 import type { MergedEntry, Transaction } from '../../types'
 import { similarity } from './similarity'
 import type { ParsedRow } from './table'
@@ -104,11 +105,15 @@ export function refundEntry(row: ParsedRow, label: string, account: string | und
 }
 
 /** 原支出记进全额退款那条的明细，方便从退款找到原来那笔 */
-export function purchaseEntry(p: { date: string; time?: string; merchant?: string; note?: string; amount: number; ref?: string }, label: string): MergedEntry {
+export function purchaseEntry(
+  p: { date: string; time?: string; merchant?: string; goods?: string; note?: string; amount: number; ref?: string },
+  label: string,
+): MergedEntry {
   const entry: MergedEntry = { label, date: p.date, amount: p.amount, purchase: true }
+  const note = describe(p)
   if (p.time) entry.time = p.time
   if (p.merchant) entry.merchant = p.merchant
-  if (p.note) entry.note = p.note
+  if (note) entry.note = note
   if (p.ref) entry.ref = p.ref
   return entry
 }
