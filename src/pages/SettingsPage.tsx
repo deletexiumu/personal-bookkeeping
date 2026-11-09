@@ -20,7 +20,7 @@ import { downloadText } from '../lib/download'
 import { csvFileName, transactionsToCsv } from '../lib/exportCsv'
 
 const GROUPS: { title: string; routes: RouteName[] }[] = [
-  { title: '账本管理', routes: ['accounts', 'categories', 'budget', 'rules'] },
+  { title: '账本管理', routes: ['accounts', 'categories', 'budget', 'tags', 'rules'] },
   { title: '数据', routes: ['import', 'api'] },
 ]
 

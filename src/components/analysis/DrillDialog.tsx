@@ -7,6 +7,7 @@ import { formatCents } from '../../lib/money'
 import { monthOfPeriod } from '../../lib/period'
 import type { Account, Category, Transaction } from '../../types'
 import { signedAmount, titleOf, type Lookup } from '../transactions/display'
+import { MerchantTagEditor } from '../tags/MerchantTagEditor'
 import { TransactionDetail } from '../transactions/TransactionDetail'
 import { TransactionList } from '../transactions/TransactionList'
 import { Button } from '../ui/Button'
@@ -27,7 +28,7 @@ interface Props {
 export function DrillDialog({ drill, rows, categories, accounts, lookup, onClose }: Props) {
   const toast = useToast()
   const [selectedId, setSelectedId] = useState<number>()
-  const items = useMemo(() => rows.filter((t) => matchDrill(t, drill)), [rows, drill])
+  const items = useMemo(() => rows.filter((t) => matchDrill(t, drill, lookup.tags)), [rows, drill, lookup])
   const selected = items.find((t) => t.id === selectedId)
   const summary = summarize(items)
   const month = monthOfPeriod({ kind: 'custom', start: drill.start, end: drill.end })
@@ -75,6 +76,7 @@ export function DrillDialog({ drill, rows, categories, accounts, lookup, onClose
           {summary.expense > 0 && ` · 支出 ${formatCents(summary.expense)}`}
           {summary.income > 0 && ` · 收入 ${formatCents(summary.income)}`}
         </p>
+        {drill.merchant && <MerchantTagEditor merchant={drill.merchant} compact />}
         {items.length === 0 ? (
           <p className="chart-empty t-body-s text-tertiary">这段时间没有对应的记录</p>
         ) : (

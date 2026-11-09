@@ -10,6 +10,7 @@ import { PeriodBar } from '../components/analysis/PeriodBar'
 import { RankedBars } from '../components/analysis/RankedBars'
 import { TrendChart } from '../components/analysis/TrendChart'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { useTags } from '../components/tags/useTags'
 import { PageHeader } from '../components/layout/AppShell'
 import { makeLookup } from '../components/transactions/display'
 import { Button, IconButton } from '../components/ui/Button'
@@ -24,6 +25,7 @@ import {
   merchantTop,
   parseKeywords,
   periodStats,
+  tagShares,
   trendSeries,
   type AnalysisView,
   type Drill,
@@ -33,6 +35,7 @@ import {
 import { useAssistantPage } from '../lib/ai/context'
 import { analysisPageData } from '../lib/ai/pages'
 import { monthOf, today } from '../lib/date'
+import { withEffectiveTags } from '../lib/tags'
 import { downloadText } from '../lib/download'
 import { csvFileName, transactionsToCsv } from '../lib/exportCsv'
 import { bucketsOf, COMPARE_LABELS, elapsedDays, periodLabel, periodOf, shiftPeriod, type Period } from '../lib/period'
@@ -84,7 +87,8 @@ export function AnalysisPage({ categories, accounts }: Props) {
   const budgetMonth = monthOf(period.end < todayDate ? period.end : period.start > todayDate ? period.start : todayDate)
   const budgetRows = useLiveQuery(() => listByMonth(db, budgetMonth), [budgetMonth], [])
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
-  const lookup = useMemo(() => makeLookup(categories, accounts), [categories, accounts])
+  const { resolve } = useTags()
+  const lookup = useMemo(() => makeLookup(categories, accounts, resolve), [categories, accounts, resolve])
 
   const stats = periodStats(rows)
   const previousStats = periodStats(previousRows)
@@ -99,6 +103,8 @@ export function AnalysisPage({ categories, accounts }: Props) {
     [rows, view, merchantLimit],
   )
   const nets = useMemo(() => merchantNet(rows), [rows])
+  const tagView: CategoryType = view === 'all' ? 'expense' : view
+  const tagItems = useMemo(() => tagShares(rows, tagView, resolve), [rows, tagView, resolve])
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
 
   const all = view === 'all'
@@ -154,12 +160,13 @@ export function AnalysisPage({ categories, accounts }: Props) {
       incomeShares,
       merchants,
       nets,
+      tags: { type: tagView, items: tagItems },
       points,
     }),
   )
 
   function exportPeriod() {
-    downloadText(csvFileName(period), transactionsToCsv(rows, categories, accounts), 'text/csv;charset=utf-8')
+    downloadText(csvFileName(period), transactionsToCsv(withEffectiveTags(rows, resolve), categories, accounts), 'text/csv;charset=utf-8')
     toast.show({ message: `已导出${label}${keywordLabel}的 ${rows.length} 条流水` })
   }
 
@@ -309,6 +316,28 @@ export function AnalysisPage({ categories, accounts }: Props) {
                 onDrill={(item) => openMerchant(item.merchant ?? item.name, view)}
               />
             )}
+            <RankedBars
+              title={`${TYPE_LABEL[tagView]}标签`}
+              hint="单笔标签优先，没有时沿用商户标签；一笔多个标签时分别计入"
+              items={tagItems}
+              type={tagView}
+              empty={`${label}没有${TYPE_LABEL[tagView]}`}
+              icon={(item) => <span className={`ranked-tag-icon ${item.tag === null ? 'is-untagged' : ''}`} aria-hidden="true">#</span>}
+              onDrill={(item) =>
+                setDrill({
+                  source: 'period',
+                  drill: {
+                    title: `${label}${keywordLabel} · ${item.name}`,
+                    start: period.start,
+                    end: period.end,
+                    type: tagView,
+                    tag: item.tag,
+                    query,
+                    noLink,
+                  },
+                })
+              }
+            />
           </div>
         </div>
       )}

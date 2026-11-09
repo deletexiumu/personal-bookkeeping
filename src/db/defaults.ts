@@ -1,4 +1,5 @@
-import type { Account, AccountType, Category, Tone } from '../types'
+import { tagUid } from '../lib/tags'
+import type { Account, AccountType, Category, Tag, Tone } from '../types'
 
 /**
  * 默认分类和账户用固定的 uid：每台设备首次打开都会写入同样的一套，同步时认作同一条记录，不会出现两份「餐饮」。
@@ -45,3 +46,31 @@ export const DEFAULT_ACCOUNTS: Account[] = Object.entries(DEFAULT_ACCOUNT_TYPES)
   initialBalance: 0,
   order: i + 1,
 }))
+
+/**
+ * 内置的初始标签：与分类互补，标出「这笔钱具体花在哪」（如万宝楼其实是游戏、转给房东的是房租）。
+ * uid 由名称算出，每台设备都有同样一份，没改过时不推送。
+ */
+export const DEFAULT_TAG_NAMES = [
+  '房租',
+  '水电燃气',
+  '通讯网费',
+  '外卖',
+  '买菜',
+  '咖啡奶茶',
+  '游戏',
+  '会员订阅',
+  '数码',
+  '服饰',
+  '日用',
+  '出行',
+  '旅行',
+  '学习',
+  '运动',
+  '人情往来',
+  '宠物',
+  '医疗',
+  '还款',
+]
+
+export const DEFAULT_TAGS: Tag[] = DEFAULT_TAG_NAMES.map((name, i) => ({ uid: tagUid(name), name, order: i + 1 }))

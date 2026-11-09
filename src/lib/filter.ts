@@ -1,5 +1,10 @@
 import type { Category, Transaction, TransactionSource, TransactionType } from '../types'
 import { formatCents } from './money'
+import { statType } from './stats'
+import { ownTagsOnly, type TagResolver } from './tags'
+
+/** 标签筛选里「未打标签」的取值 */
+export const UNTAGGED = '__untagged__'
 
 /** 明细筛选条件；字段为空表示不限 */
 export interface TransactionFilter {
@@ -9,17 +14,27 @@ export interface TransactionFilter {
   accountId?: number
   categoryId?: number
   source?: TransactionSource
+  /** 标签名，或 UNTAGGED 表示还没有标签的收支（不含转账和不计收支的） */
+  tag?: string
 }
 
 export function isFilterEmpty(filter: TransactionFilter): boolean {
-  return !filter.query?.trim() && !filter.type && filter.accountId === undefined && filter.categoryId === undefined && !filter.source
+  return (
+    !filter.query?.trim() &&
+    !filter.type &&
+    filter.accountId === undefined &&
+    filter.categoryId === undefined &&
+    !filter.source &&
+    !filter.tag
+  )
 }
 
-/** 按条件筛选流水。账户条件同时匹配转账的转出和转入账户。 */
+/** 按条件筛选流水。账户条件同时匹配转账的转出和转入账户；标签按实际生效的标签（含商户标签）。 */
 export function filterTransactions(
   rows: Transaction[],
   filter: TransactionFilter,
   categories: Category[] = [],
+  resolveTags: TagResolver = ownTagsOnly,
 ): Transaction[] {
   const query = filter.query?.trim().toLowerCase().replace(/^[#＃]/, '')
   const categoryName = new Map(categories.map((c) => [c.id, c.name.toLowerCase()]))
@@ -30,13 +45,18 @@ export function filterTransactions(
     if (filter.accountId !== undefined && t.accountId !== filter.accountId && t.transferAccountId !== filter.accountId) {
       return false
     }
+    if (filter.tag === UNTAGGED) {
+      if (!statType(t) || resolveTags(t).length > 0) return false
+    } else if (filter.tag && !resolveTags(t).includes(filter.tag)) {
+      return false
+    }
     if (!query) return true
     const amount = formatCents(t.amount).slice(1).replace(/,/g, '')
     const haystack = [
       t.note,
       t.merchant,
       t.categoryId === undefined ? '转账' : categoryName.get(t.categoryId),
-      ...(t.tags ?? []),
+      ...resolveTags(t),
       amount,
       t.externalId,
       t.excluded ? '不计收支' : undefined,
@@ -52,7 +72,7 @@ export const SOURCE_LABEL: Record<TransactionSource, string> = {
   rule: '规则',
 }
 
-/** 从明细页链接中读出月份和筛选条件，例如 #/transactions?month=2026-11&type=expense&category=1&q=星巴克 */
+/** 从明细页链接中读出月份和筛选条件，例如 #/transactions?month=2026-11&type=expense&category=1&q=星巴克&tag=游戏 */
 export function parseTransactionsHash(hash: string): { month?: string; filter: TransactionFilter } {
   const query = hash.split('?')[1]
   const filter: TransactionFilter = {}
@@ -67,5 +87,7 @@ export function parseTransactionsHash(hash: string): { month?: string; filter: T
   if (Number.isInteger(account) && account > 0) filter.accountId = account
   const q = params.get('q')?.trim()
   if (q) filter.query = q
+  const tag = params.get('tag')?.trim()
+  if (tag) filter.tag = tag
   return { month: month && /^\d{4}-\d{2}$/.test(month) ? month : undefined, filter }
 }

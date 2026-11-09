@@ -6,6 +6,7 @@ import {
   List,
   Shapes,
   SlidersHorizontal,
+  Hash,
   Tag,
   Target,
   User,
@@ -27,6 +28,7 @@ export const SIDEBAR_ITEMS: NavItem[] = [
   { route: 'import', label: '导入', icon: Download },
   { route: 'budget', label: '预算', icon: Target },
   { route: 'accounts', label: '账户', icon: Wallet },
+  { route: 'tags', label: '标签', icon: Hash },
   { route: 'rules', label: '规则', icon: Tag },
   { route: 'api', label: '开放接口', icon: CodeXml },
   { route: 'settings', label: '设置', icon: SlidersHorizontal },
@@ -57,5 +59,5 @@ export function sidebarRouteOf(route: RouteName): RouteName {
 
 /** 移动端 Tab 没有的页面，高亮「我的」 */
 export function tabRouteOf(route: RouteName): RouteName {
-  return ['budget', 'accounts', 'categories', 'rules', 'api', 'login'].includes(route) ? 'settings' : route
+  return ['budget', 'accounts', 'categories', 'rules', 'tags', 'api', 'login'].includes(route) ? 'settings' : route
 }

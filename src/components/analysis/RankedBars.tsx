@@ -15,11 +15,12 @@ interface Props {
 }
 
 /**
- * 排行横条：一个方向一种颜色，按金额从大到小，条长相对第一名。
+ * 排行横条：一个方向一种颜色，按金额从大到小，条长相对最大的一项。
  * 名称、金额、占比和笔数都以文字给出，整行可点击下钻到对应流水。
  */
 export function RankedBars({ title, hint, items, type, empty, icon, onDrill }: Props) {
-  const max = items[0]?.amount ?? 0
+  // 一般第一名最大；标签排行把「未打标签」放在最后，它可能比第一名还大
+  const max = Math.max(0, ...items.map((i) => i.amount))
   return (
     <section className="card chart-card" aria-label={title}>
       <header className="chart-head">

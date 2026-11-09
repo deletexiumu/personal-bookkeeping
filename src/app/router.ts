@@ -13,6 +13,7 @@ export const ROUTES = [
   'accounts',
   'categories',
   'rules',
+  'tags',
   'api',
   'settings',
   'login',

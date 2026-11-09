@@ -13,10 +13,12 @@ import {
   niceTicks,
   parseKeywords,
   periodStats,
+  tagShares,
   transactionsHref,
   trendSeries,
 } from './analysis'
 import { parseTransactionsHash } from './filter'
+import { makeTagResolver } from './tags'
 import {
   bucketsOf,
   customPeriod,
@@ -235,5 +237,46 @@ describe('合计视图与关键字', () => {
   it('关键字只有一个时，明细页链接带上搜索词', () => {
     expect(transactionsHref('2026-11', { query: '美团' })).toBe('#/transactions?month=2026-11&q=%E7%BE%8E%E5%9B%A2')
     expect(transactionsHref('2026-11', { query: '美团', merchant: '美团外卖' })).toContain(encodeURIComponent('美团外卖'))
+  })
+})
+
+describe('按标签统计', () => {
+  const t = (id: number, extra: Partial<Transaction>): Transaction => ({
+    id,
+    type: 'expense',
+    amount: 100,
+    categoryId: 1,
+    accountId: 1,
+    date: '2026-11-03',
+    source: 'import',
+    createdAt: 0,
+    updatedAt: 0,
+    ...extra,
+  })
+  const resolve = makeTagResolver([{ merchant: '西山居万宝楼', tags: ['游戏'] }])
+  const rows = [
+    t(1, { merchant: '西山居万宝楼', amount: 8000 }),
+    t(2, { merchant: '西山居万宝楼', amount: 2000, tags: ['礼物', '游戏'] }),
+    t(3, { merchant: '谢志英', amount: 3000 }),
+    t(4, { merchant: '公司', type: 'income', amount: 9000 }),
+    t(5, { merchant: '余额宝', excluded: true, amount: 5000 }),
+  ]
+
+  it('多个标签分别计入，未打标签排最后', () => {
+    const items = tagShares(rows, 'expense', resolve)
+    expect(items.map((i) => [i.name, i.amount, i.count, i.tag])).toEqual([
+      ['#游戏', 10000, 2, '游戏'],
+      ['#礼物', 2000, 1, '礼物'],
+      ['未打标签', 3000, 1, null],
+    ])
+    expect(items[0].share).toBeCloseTo(10000 / 13000)
+  })
+
+  it('下钻按标签 / 未打标签筛选，明细链接带上标签', () => {
+    const drill = { title: '', start: '2026-11-01', end: '2026-11-30', type: 'expense' as const }
+    expect(rows.filter((r) => matchDrill(r, { ...drill, tag: '游戏' }, resolve)).map((r) => r.id)).toEqual([1, 2])
+    expect(rows.filter((r) => matchDrill(r, { ...drill, tag: null }, resolve)).map((r) => r.id)).toEqual([3])
+    expect(transactionsHref('2026-11', { tag: '游戏' })).toBe('#/transactions?month=2026-11&tag=%E6%B8%B8%E6%88%8F')
+    expect(parseTransactionsHash(transactionsHref('2026-11', { tag: null })).filter).toEqual({ tag: '__untagged__' })
   })
 })

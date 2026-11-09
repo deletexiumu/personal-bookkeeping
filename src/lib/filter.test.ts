@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Transaction } from '../types'
-import { filterTransactions, isFilterEmpty } from './filter'
+import { filterTransactions, isFilterEmpty, parseTransactionsHash, UNTAGGED } from './filter'
+import { makeTagResolver } from './tags'
 
 const base = { accountId: 1, date: '2026-11-04', source: 'manual' as const, createdAt: 0, updatedAt: 0 }
 const rows: Transaction[] = [
@@ -16,6 +17,24 @@ const categories = [
 ]
 const ids = (filter: Parameters<typeof filterTransactions>[1]) =>
   filterTransactions(rows, filter, categories).map((t) => t.id)
+
+describe('按标签筛选', () => {
+  const resolve = makeTagResolver([{ merchant: '盒马鲜生', tags: ['买菜'] }])
+  const tagged = (filter: Parameters<typeof filterTransactions>[1]) =>
+    filterTransactions(rows, filter, categories, resolve).map((t) => t.id)
+
+  it('按实际生效的标签（含商户标签）筛选；未打标签不含转账', () => {
+    expect(tagged({ tag: '买菜' })).toEqual([2])
+    expect(tagged({ tag: '工作日' })).toEqual([1])
+    expect(tagged({ tag: UNTAGGED })).toEqual([3])
+    expect(tagged({ query: '#买菜' })).toEqual([2])
+    expect(isFilterEmpty({ tag: '买菜' })).toBe(false)
+  })
+
+  it('链接里带标签', () => {
+    expect(parseTransactionsHash('#/transactions?month=2026-11&tag=游戏').filter).toEqual({ tag: '游戏' })
+  })
+})
 
 describe('filterTransactions', () => {
   it('空条件返回全部', () => {

@@ -41,7 +41,10 @@ export interface Transaction extends SyncMeta {
   note?: string
   /** 商户 / 交易对方，多来自账单导入 */
   merchant?: string
-  /** 标签，不含 # */
+  /**
+   * 这一笔自己的标签，不含 #。有值时优先于商户标签（TagRule），没有时沿用商户标签，
+   * 实际生效的标签用 src/lib/tags.ts 的 makeTagResolver 计算
+   */
   tags?: string[]
   source: TransactionSource
   /** 导入批次，用于整批撤销 */
@@ -177,4 +180,24 @@ export interface ImportTemplate extends SyncMeta {
   /** 默认入账账户 */
   accountId?: number
   createdAt: number
+}
+
+/** 标签目录：内置的初始标签和用户新建的标签，打标签时从这里选。流水和商户标签按名称引用 */
+export interface Tag extends SyncMeta {
+  id?: number
+  name: string
+  /** 排序，越小越靠前 */
+  order?: number
+  createdAt?: number
+}
+
+/**
+ * 商户标签：同一商户（没有商户时按备注，与分析页的商户排行一致）的流水都带上这些标签，
+ * 包括以后导入的。单笔流水自己打了标签时以单笔为准。uid 由商户名算出，两台设备给同一商户打标签时认作同一条。
+ */
+export interface TagRule extends SyncMeta {
+  id?: number
+  merchant: string
+  tags: string[]
+  createdAt?: number
 }
