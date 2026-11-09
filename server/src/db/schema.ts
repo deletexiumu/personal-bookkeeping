@@ -66,3 +66,23 @@ export const syncRecords = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.table, t.uid] }), index('sync_records_user_rev_idx').on(t.userId, t.rev)],
 )
+
+/**
+ * 每个账号自己的 AI 接入点。API Key 用服务端密钥（AES-256-GCM）加密后保存，接口从不返回明文。
+ * 没有这一行时使用服务器默认的接入点（环境变量 AI_*）。
+ */
+export const aiSettings = pgTable('ai_settings', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** anthropic 或 openai（OpenAI 兼容） */
+  format: text('format').notNull(),
+  /** 接入地址，空字符串表示官方地址 */
+  baseUrl: text('base_url').notNull(),
+  model: text('model').notNull(),
+  /** 加密后的 API Key */
+  apiKey: text('api_key'),
+  /** 访问 AI 接口时走的代理 */
+  proxyUrl: text('proxy_url'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})

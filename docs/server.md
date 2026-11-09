@@ -34,6 +34,15 @@ pnpm typecheck
 | `TRUST_PROXY` | `true` | 是否信任反向代理传来的 `X-Real-IP`，用于按 IP 限频 |
 | `CORS_ORIGINS` | 桌面端 WebView 的来源 | 允许跨域访问的来源，逗号分隔。跨域请求只能用 Bearer 令牌，不带 Cookie；Web 端同源，不需要配 |
 | `SYNC_MAX_RECORDS` | `200000` | 每个账号在云端最多存多少条记录（各表合计，含删除记录），开放注册时防滥用 |
+| `AI_API_KEY` | 无 | 服务器默认的 AI 接入点的 Key；配了之后，没自己配置接入点的用户也能用 AI 助手 |
+| `AI_FORMAT` | `anthropic` | 默认接入点的接口格式：`anthropic` 或 `openai`（OpenAI 兼容） |
+| `AI_BASE_URL` | 官方地址 | 默认接入点的地址 |
+| `AI_MODEL` | `claude-opus-5-5`（anthropic） | 默认接入点的模型；`openai` 格式必填 |
+| `AI_PROXY` | 无 | 访问 AI 接口时走的代理（`http://`、`https://`、`socks5://`），用户自己填的代理优先 |
+| `AI_SECRET` | 自动生成 | 加密保存用户 API Key 的密钥；不填时生成在 `DATA_DIR/ai-secret.key`。换机器或用 PostgreSQL 多实例时请固定配置 |
+| `AI_ALLOW_PRIVATE` | `false` | 是否允许用户把接入地址、代理填成内网或本机地址 |
+| `AI_RATE_PER_MINUTE` / `AI_DAILY_LIMIT` | `20` / `300` | 每个账号每分钟、每天最多请求 AI 多少次 |
+| `AI_TIMEOUT_SECONDS` | `55` | 单次请求 AI 接口的超时；调大时反向代理的 `proxy_read_timeout` 也要跟着调大 |
 
 ## 接口
 
@@ -54,10 +63,23 @@ pnpm typecheck
 | `POST /api/sync/push` | `{ changes: [{ table, uid, modifiedAt, data }] }` 上传本机改动（一次最多 500 条），返回 `{ accepted, conflicts }` |
 | `GET /api/sync/pull?since=&limit=` | 拉取 `rev` 大于 `since` 的改动，按 `rev` 升序；`more` 为 true 时用返回的 `cursor` 接着拉 |
 | `GET /api/sync/status` | 云端各表的记录数 |
+| `GET /api/ai/config` | 当前账号的 AI 接入点（Key 只给提示，如 `sk-…1234`）与服务器默认接入点是否可用 |
+| `POST /api/ai/settings` | `{ format, baseUrl, model, apiKey?, proxyUrl }` 保存自己的接入点；不传 `apiKey` 保留原 Key |
+| `DELETE /api/ai/settings` | 删除自己的接入点，改用服务器默认 |
+| `POST /api/ai/test` | `{ settings? }` 用固定问题测试接入点（可测试还没保存的设置） |
+| `POST /api/ai/chat` | `{ items }` 转发一轮对话，返回 `{ item }`（模型的一条回答） |
 
 **令牌怎么传**：`tokenMode` 默认 `cookie`，令牌写进 HttpOnly、SameSite=Strict、Path=/api 的 Cookie，页面脚本读不到，Web 端用这个。桌面端和小程序不同源，传 `tokenMode: "bearer"`，令牌在响应的 `token` 字段，之后放在 `Authorization: Bearer` 头里。数据库只存令牌的 SHA-256。
 
 **安全措施**：密码用 scrypt 加盐哈希；邮箱不存在时也跑一次哈希，响应时间不暴露邮箱是否注册；同一邮箱 15 分钟内失败 10 次、同一 IP 15 分钟内尝试 50 次后限频；用 Cookie 时改动类请求必须是 JSON（配合 SameSite=Strict 防跨站请求）；接口响应一律 `Cache-Control: no-store`。
+
+## AI 助手
+
+前端的 AI 助手有两种连接方式：浏览器直连（Key 只在本机浏览器）和经本服务转发（`/api/ai/*`，Key 加密存在服务器、可设代理）。系统提示词、工具定义和两种接口格式的转换在 `src/ai/core.ts`，前端直接 import 同一个文件。
+
+工具（查汇总、查明细、列分类账户预算）在前端执行：账单在浏览器的 IndexedDB 里，服务端只转发模型请求，不读同步数据。
+
+防止被当成通用大模型中转：只有登录用户能用；系统提示词和工具固定在服务端，客户端只能提交结构化的问题（≤500 字）、账本数据（≤3 万字）和工具结果，不能传系统提示词或模型参数；提示词要求只回答账单相关问题，其余一律拒答；按账号每分钟、每天限次；服务器默认的 Key 只发往服务器配置的地址，用户填写的地址只会带用户自己的 Key；默认不允许接入地址和代理指向内网。
 
 ## 管理命令
 

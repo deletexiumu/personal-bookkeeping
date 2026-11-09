@@ -5,6 +5,7 @@ import { usePwaUpdatePrompt } from './app/pwa'
 import { useAutoSync } from './app/sync'
 import { useRoute } from './app/router'
 import { useHotkey } from './app/useHotkey'
+import { AssistantButton, AssistantPanel } from './components/assistant/AssistantPanel'
 import { AppShell } from './components/layout/AppShell'
 import { SyncChoiceDialog } from './components/settings/SyncChoiceDialog'
 import { TransactionForm } from './components/transactions/TransactionForm'
@@ -35,6 +36,10 @@ export default function App() {
   const openQuickAdd = useCallback(() => setQuickAddOpen(true), [])
   const closeQuickAdd = useCallback(() => setQuickAddOpen(false), [])
   useHotkey('n', openQuickAdd, !quickAddOpen)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const openAssistant = useCallback(() => setAssistantOpen(true), [])
+  const closeAssistant = useCallback(() => setAssistantOpen(false), [])
+  useHotkey('a', openAssistant, !assistantOpen && !quickAddOpen)
   // 已登录时确认会话仍有效（在别处退出、改了密码或过期时变为未登录）
   useEffect(() => {
     void refreshAccount()
@@ -75,6 +80,8 @@ export default function App() {
         <TransactionForm categories={activeCategories} accounts={activeAccounts} onDone={closeQuickAdd} />
         </Dialog>
       </AppShell>
+      {!assistantOpen && route !== 'login' && <AssistantButton onClick={openAssistant} />}
+      <AssistantPanel open={assistantOpen} onClose={closeAssistant} />
     </ToastProvider>
   )
 }

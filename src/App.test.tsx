@@ -612,4 +612,61 @@ describe('App', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('不是陶朱簿导出的备份文件')
     })
   })
+
+  describe('AI 助手', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('没配置时引导去设置；浏览器直连时结合当前页面提问、本机执行工具后显示回答', async () => {
+      const user = userEvent.setup()
+      const month = today().slice(0, 7)
+      await addTransaction(db, { type: 'expense', amount: 3250, categoryId: 1, accountId: 1, date: `${month}-01`, merchant: '美团外卖' })
+      render(<App />)
+      await user.keyboard('a')
+      const panel = await screen.findByRole('complementary', { name: 'AI 助手' })
+      expect(await within(panel).findByText(/浏览器直连|服务器转发需要先登录/)).toBeInTheDocument()
+
+      // 设置为浏览器直连
+      await user.click(within(panel).getByRole('button', { name: '设置 AI 接入点' }))
+      const dialog = await screen.findByRole('dialog', { name: 'AI 接入点' })
+      await user.click(within(dialog).getByRole('radio', { name: '浏览器直连' }))
+      await user.type(within(dialog).getByLabelText('API Key'), 'sk-ant-test-123456')
+      await user.click(within(dialog).getByRole('button', { name: '保存' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(JSON.parse(localStorage.getItem('taozhubu:ai')!)).toMatchObject({ mode: 'direct', direct: { apiKey: 'sk-ant-test-123456' } })
+
+      const bodies: Record<string, unknown>[] = []
+      const replies = [
+        { content: [{ type: 'tool_use', id: 't1', name: 'query_summary', input: { start: `${month}-01`, end: `${month}-28`, groupBy: 'merchant' } }], stop_reason: 'tool_use' },
+        { content: [{ type: 'text', text: '本月主要花在 **美团外卖**：\n- ¥32.50，1 笔' }], stop_reason: 'end_turn' },
+      ]
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init: RequestInit) => {
+          bodies.push(JSON.parse(String(init.body)))
+          return new Response(JSON.stringify(replies.shift()), { status: 200, headers: { 'content-type': 'application/json' } })
+        }),
+      )
+      expect(within(panel).getByRole('button', { name: /明细 · / })).toHaveAttribute('aria-pressed', 'true')
+      await user.type(within(panel).getByLabelText('问题'), '这个月钱花在哪了？{Enter}')
+
+      expect(await within(panel).findByText('美团外卖', { selector: 'strong' })).toBeInTheDocument()
+      expect(within(panel).getByText(/按商户/)).toBeInTheDocument()
+      expect(within(panel).getByText(/附带：明细 · /)).toBeInTheDocument()
+      const first = bodies[0] as { messages: { content: string }[]; system: string }
+      expect(first.messages[0].content).toContain('<账本数据>')
+      expect(first.messages[0].content).toContain('"page":"明细"')
+      expect(first.system).toContain('只回复这一句')
+      // 第二次请求带上了本机算好的工具结果
+      const second = bodies[1] as { messages: { role: string; content: { type: string; content: string }[] }[] }
+      const toolResult = second.messages[2].content[0]
+      expect(toolResult.type).toBe('tool_result')
+      expect(JSON.parse(toolResult.content)).toMatchObject({ expense: 32.5, groups: [{ name: '美团外卖', amount: 32.5 }] })
+
+      await user.click(within(panel).getByRole('button', { name: '关闭' }))
+      expect(panel).not.toHaveClass('is-open')
+      expect(screen.getByRole('button', { name: '打开 AI 助手' })).toBeInTheDocument()
+    })
+  })
 })

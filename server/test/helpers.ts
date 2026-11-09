@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+import type { UpstreamFetch } from '../src/ai/upstream.ts'
 import { createApp } from '../src/app.ts'
 import { loadConfig, type Config } from '../src/config.ts'
 import { openDatabase, type Database } from '../src/db/client.ts'
@@ -15,13 +16,13 @@ export interface TestServer {
 const databaseUrl = process.env.TEST_DATABASE_URL ?? ''
 let shared: Promise<Database> | undefined
 
-export async function startTestServer(env: Record<string, string> = {}): Promise<TestServer> {
+export async function startTestServer(env: Record<string, string> = {}, aiFetch?: UpstreamFetch): Promise<TestServer> {
   const config = loadConfig({ DATA_DIR: 'memory://', DATABASE_URL: databaseUrl, COOKIE_SECURE: 'true', ...env })
   shared ??= openDatabase(config)
   const database = await shared
   await database.db.execute(sql`truncate users, sessions, invites, sync_records cascade`)
   const clock = { now: new Date('2026-11-04T10:00:00Z') }
-  const app = createApp({ db: database.db, config, now: () => clock.now })
+  const app = createApp({ db: database.db, config, now: () => clock.now, aiFetch })
   let ip = 0
   return {
     database,

@@ -30,6 +30,8 @@ import {
   type ShareItem,
   type TrendPoint,
 } from '../lib/analysis'
+import { useAssistantPage } from '../lib/ai/context'
+import { analysisPageData } from '../lib/ai/pages'
 import { monthOf, today } from '../lib/date'
 import { downloadText } from '../lib/download'
 import { csvFileName, transactionsToCsv } from '../lib/exportCsv'
@@ -137,6 +139,24 @@ export function AnalysisPage({ categories, accounts }: Props) {
       source: 'period',
       drill: { title: `${label} · ${name}`, start: period.start, end: period.end, type, merchant: name },
     })
+
+  const viewLabel = { expense: '支出', income: '收入', all: '合计' }[view]
+  useAssistantPage(`分析 · ${label} · ${viewLabel}${keywordLabel}`, () =>
+    analysisPageData({
+      period: { start: period.start, end: period.end, label },
+      compareLabel: COMPARE_LABELS[period.kind],
+      view,
+      keywords,
+      current: stats,
+      previous: previousStats,
+      average,
+      expenseShares,
+      incomeShares,
+      merchants,
+      nets,
+      points,
+    }),
+  )
 
   function exportPeriod() {
     downloadText(csvFileName(period), transactionsToCsv(rows, categories, accounts), 'text/csv;charset=utf-8')

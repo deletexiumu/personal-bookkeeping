@@ -34,6 +34,8 @@ server {
     # 后端接口：proxy_pass 用变量时原样转发完整路径（/api/...）
     location /api/ {
         client_max_body_size 2m;
+        # AI 助手转发要等模型回答，比默认的 60 秒宽松一些（后端默认 55 秒超时）
+        proxy_read_timeout 120s;
         proxy_pass $taozhubu_api;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

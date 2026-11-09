@@ -25,6 +25,22 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('tauri://localhost,http://tauri.localhost,https://tauri.localhost'),
   /** 每个账号在云端最多存多少条记录（流水、分类等合计，含删除记录），防止滥用 */
   SYNC_MAX_RECORDS: z.coerce.number().int().min(1000).default(200000),
+  /** 服务器默认的 AI 接入点：配了 AI_API_KEY 后，没有自己配置接入点的用户也能用 AI 助手 */
+  AI_FORMAT: z.enum(['anthropic', 'openai']).default('anthropic'),
+  AI_BASE_URL: z.string().optional(),
+  AI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().optional(),
+  /** 访问 AI 接口时走的代理，http://、https:// 或 socks5://，用户在设置里填的优先 */
+  AI_PROXY: z.string().optional(),
+  /** 加密保存用户 API Key 的密钥；不填时自动生成，存在 DATA_DIR/ai-secret.key */
+  AI_SECRET: z.string().optional(),
+  /** 是否允许接入地址、代理指向内网或本机地址（默认不允许，防止被用来探测内网） */
+  AI_ALLOW_PRIVATE: bool.default(false),
+  /** 每个账号每分钟、每天最多请求 AI 多少次（一个问题查数据时会请求多次） */
+  AI_RATE_PER_MINUTE: z.coerce.number().int().min(1).default(20),
+  AI_DAILY_LIMIT: z.coerce.number().int().min(1).default(300),
+  /** 单次请求 AI 接口的超时秒数；默认比 nginx 默认的 proxy_read_timeout（60 秒）短，超时能给出可读的提示 */
+  AI_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(600).default(55),
 })
 
 export interface Config {
@@ -37,6 +53,20 @@ export interface Config {
   trustProxy: boolean
   corsOrigins: string[]
   syncMaxRecords: number
+  ai: AiConfig
+}
+
+export interface AiConfig {
+  format: 'anthropic' | 'openai'
+  baseUrl: string
+  apiKey?: string
+  model: string
+  proxy?: string
+  secret?: string
+  allowPrivate: boolean
+  ratePerMinute: number
+  dailyLimit: number
+  timeoutMs: number
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -56,5 +86,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustProxy: e.TRUST_PROXY,
     corsOrigins: e.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean),
     syncMaxRecords: e.SYNC_MAX_RECORDS,
+    ai: {
+      format: e.AI_FORMAT,
+      baseUrl: e.AI_BASE_URL ?? '',
+      apiKey: e.AI_API_KEY,
+      model: e.AI_MODEL ?? '',
+      proxy: e.AI_PROXY,
+      secret: e.AI_SECRET,
+      allowPrivate: e.AI_ALLOW_PRIVATE,
+      ratePerMinute: e.AI_RATE_PER_MINUTE,
+      dailyLimit: e.AI_DAILY_LIMIT,
+      timeoutMs: e.AI_TIMEOUT_SECONDS * 1000,
+    },
   }
 }
