@@ -4,7 +4,7 @@ import { SOURCE_LABEL } from './filter'
 const TYPE_LABEL = { expense: '支出', income: '收入', transfer: '转账' } as const
 
 /** 表头与导入中心「通用表格」的自动识别一致，导出的文件可以再导回来 */
-export const CSV_HEADERS = ['日期', '时间', '收/支', '金额', '分类', '账户', '转入账户', '商户', '备注', '标签', '来源']
+export const CSV_HEADERS = ['日期', '时间', '收/支', '金额', '分类', '账户', '转入账户', '商户', '备注', '标签', '来源', '商品说明', '订单号', '商户单号']
 
 /** CSV 单元格：含逗号、引号、换行时加引号；以 = + - @ 开头时前置单引号，防止表格软件当公式执行 */
 export function csvCell(value: string): string {
@@ -37,6 +37,9 @@ export function transactionsToCsv(rows: Transaction[], categories: Category[], a
       t.note ?? '',
       (t.tags ?? []).join(' '),
       SOURCE_LABEL[t.source],
+      t.goods ?? '',
+      t.externalId ?? '',
+      t.merchantOrderNo ?? '',
     ]
       .map(csvCell)
       .join(','),

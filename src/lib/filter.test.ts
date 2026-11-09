@@ -6,7 +6,7 @@ import { makeTagResolver } from './tags'
 const base = { accountId: 1, date: '2026-11-04', source: 'manual' as const, createdAt: 0, updatedAt: 0 }
 const rows: Transaction[] = [
   { ...base, id: 1, type: 'expense', amount: 3200, categoryId: 1, note: '午饭', tags: ['工作日'] },
-  { ...base, id: 2, type: 'expense', amount: 18650, categoryId: 3, merchant: '盒马鲜生', accountId: 3, source: 'import', externalId: '2026102823001181821409885170' },
+  { ...base, id: 2, type: 'expense', amount: 18650, categoryId: 3, merchant: '盒马鲜生', accountId: 3, source: 'import', externalId: '2026102823001181821409885170', goods: '盒马鲜生(中铁西城店)外卖订单', merchantOrderNo: '13180600726102885069996412054', payMethod: '中信银行储蓄卡(1145)' },
   { ...base, id: 3, type: 'income', amount: 1200000, categoryId: 8, accountId: 2 },
   { ...base, id: 4, type: 'transfer', amount: 50000, accountId: 4, transferAccountId: 2 },
 ]
@@ -52,6 +52,15 @@ describe('filterTransactions', () => {
     expect(ids({ query: '12000' })).toEqual([3])
     expect(ids({ query: '转账' })).toEqual([4])
     expect(ids({ query: '2026102823001181821409885170' })).toEqual([2])
+  })
+
+  it('关键字也匹配商品说明、商户单号、付款方式和合并进来的流水', () => {
+    expect(ids({ query: '外卖订单' })).toEqual([2])
+    expect(ids({ query: '13180600726102885069996412054' })).toEqual([2])
+    expect(ids({ query: '1145' })).toEqual([2])
+    const merged: Transaction = { ...base, id: 9, type: 'expense', amount: 100, merged: [{ label: '招商银行流水', date: '2026-11-04', note: '快捷支付', ref: 'B9' }] }
+    expect(filterTransactions([merged], { query: '快捷支付' }).map((t) => t.id)).toEqual([9])
+    expect(filterTransactions([merged], { query: 'B9' }).map((t) => t.id)).toEqual([9])
   })
 
   it('按类型、分类、来源筛选', () => {

@@ -8,7 +8,7 @@ export const UNTAGGED = '__untagged__'
 
 /** 明细筛选条件；字段为空表示不限 */
 export interface TransactionFilter {
-  /** 关键字：匹配备注、商户、分类名、标签、金额、交易单号和「不计收支」 */
+  /** 关键字：匹配备注、商户、商品说明、分类名、标签、金额、订单号、商户单号、付款方式、合并进来的流水和「不计收支」 */
   query?: string
   type?: TransactionType
   accountId?: number
@@ -59,6 +59,10 @@ export function filterTransactions(
       ...resolveTags(t),
       amount,
       t.externalId,
+      t.goods,
+      t.merchantOrderNo,
+      t.payMethod,
+      ...(t.merged ?? []).flatMap((m) => [m.merchant, m.note, m.ref]),
       t.excluded ? '不计收支' : undefined,
     ]
     return haystack.some((text) => text?.toLowerCase().includes(query))

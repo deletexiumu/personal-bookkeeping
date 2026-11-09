@@ -123,10 +123,20 @@ export interface ParsedRow {
   /** 金额（分），恒为正 */
   amount: number
   merchant?: string
+  /**
+   * 用于匹配的说明文字：商品说明和备注 / 摘要用「 · 」拼在一起（分类规则、去重、合并都按它比对）。
+   * 写入流水时商品说明和备注分开存，见 goods、remark
+   */
   note?: string
+  /** 账单里的商品说明（单独映射了商品说明列时才有） */
+  goods?: string
+  /** 备注 / 摘要列的内容（不含商品说明） */
+  remark?: string
   categoryName?: string
   accountName?: string
   ref?: string
+  /** 商户单号 */
+  merchantRef?: string
   /** 账单里的交易类型（如微信的「微信红包」「转账」），只用于自动分类 */
   kind?: string
   /** 不建议入账的原因，例如交易关闭、不计收支；预览中默认不勾选 */
@@ -159,9 +169,9 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
       .join(' · ')
 
   const isRefund = (cells: string[]) =>
-    ['category', 'kind', 'note', 'status'].some((f) => /退款/.test(joined(cells, f as FieldKey)))
+    ['category', 'kind', 'goods', 'note', 'status'].some((f) => /退款/.test(joined(cells, f as FieldKey)))
   const isRepayment = (cells: string[]) =>
-    ['category', 'kind', 'note', 'merchant'].some((f) => /还款/.test(joined(cells, f as FieldKey)))
+    ['category', 'kind', 'goods', 'note', 'merchant'].some((f) => /还款/.test(joined(cells, f as FieldKey)))
 
   for (const { line, cells } of table.rows) {
     const dt = parseDateCell(first(cells, 'date'))
@@ -213,16 +223,22 @@ export function parseRows(table: SheetTable, mapping: ColumnMapping[], amountSig
     const row: ParsedRow = { line, date: dt.date, type, amount }
     if (time) row.time = time
     const merchant = joined(cells, 'merchant')
-    const note = joined(cells, 'note')
+    const goods = joined(cells, 'goods')
+    const remark = joined(cells, 'note')
+    const note = [goods, remark].filter(Boolean).join(' · ')
     const categoryName = first(cells, 'category')
     const accountName = first(cells, 'account')
     const ref = first(cells, 'ref')
+    const merchantRef = first(cells, 'merchantRef')
     const kind = first(cells, 'kind')
     if (merchant) row.merchant = merchant
     if (note) row.note = note
+    if (goods) row.goods = goods
+    if (remark && goods) row.remark = remark
     if (categoryName) row.categoryName = categoryName
     if (accountName && accountName !== '/') row.accountName = accountName
     if (ref) row.ref = ref
+    if (merchantRef && merchantRef !== '/') row.merchantRef = merchantRef
     if (kind && kind !== '/') row.kind = kind
     if (skipReason) row.skipReason = skipReason
     rows.push(row)

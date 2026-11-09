@@ -110,7 +110,7 @@ describe('微信账单模板', () => {
     expect(sniff.template?.id).toBe('wechat')
     expect(sniff.table.headerRow).toBe(16)
     expect(sniff.mapping.map((m) => m.field)).toEqual([
-      'date', 'kind', 'merchant', 'note', 'direction', 'amount', 'account', 'status', 'ref', 'ignore', 'note',
+      'date', 'kind', 'merchant', 'goods', 'direction', 'amount', 'account', 'status', 'ref', 'merchantRef', 'note',
     ])
     const { rows, errors } = parseRows(sniff.table, sniff.mapping)
     expect(errors).toEqual([])
@@ -122,8 +122,10 @@ describe('微信账单模板', () => {
       amount: 3650,
       merchant: '美团外卖',
       note: '美团订单-3381',
+      goods: '美团订单-3381',
       accountName: '零钱',
       ref: '4200001',
+      merchantRef: '10001',
       kind: '商户消费',
     })
     expect(rows[1].note).toBeUndefined()
@@ -175,6 +177,8 @@ describe('支付宝账单模板', () => {
       ['淘宝商家', 'expense', 5900, '2026102822004', '交易关闭'],
       ['盒马', 'income', 1250, '2026103022002*R005', undefined],
     ])
+    // 商品说明、商家订单号单独解析；匹配用的说明文字仍含商品说明
+    expect(rows[0]).toMatchObject({ goods: '宅急送订单', note: '宅急送订单', merchantRef: 'T001', accountName: '花呗' })
     const withOther: Category[] = [...categories, { id: 11, name: '其他收入', type: 'income' }]
     const items = buildPreview(rows, { categories: withOther, merchantHistory: new Map(), accounts, defaultAccountId: 3, existing: [] })
     expect(items.map((i) => i.categoryId)).toEqual([1, 3, 10, 3, 11])

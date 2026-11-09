@@ -59,7 +59,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const merchantKey = merchantOf({ merchant: merchant.trim() || undefined, note: note.trim() || undefined })
+  const merchantKey = merchantOf({ merchant: merchant.trim() || undefined, goods: t.goods, note: note.trim() || undefined })
   const inheritedTags = tagData.resolve.merchantTags(merchantKey)
 
   // 归档的分类 / 账户不再可选，但这笔记录当前用的仍然显示
@@ -67,7 +67,8 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
   const accountOptions = accounts.filter(
     (a) => !a.archived || a.id === t.accountId || a.id === t.transferAccountId,
   )
-  const selectedCategory = categoryOptions.some((c) => c.id === categoryId) ? categoryId : categoryOptions[0]?.id
+  // 没有分类（导入时没认出来）或换了收支类型时显示「未分类」，不默认选第一个，免得一保存就被归到别的分类
+  const selectedCategory = categoryOptions.some((c) => c.id === categoryId) ? categoryId : undefined
 
   // ⌘S / Ctrl+S 保存
   useEffect(() => {
@@ -97,7 +98,8 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
       setError('转出和转入账户不能相同')
       return
     }
-    if (!isTransfer && selectedCategory === undefined) {
+    // 原来就没分类的可以先保存别的改动（如标签、备注）；改了收支类型的要重新选分类
+    if (!isTransfer && selectedCategory === undefined && (t.categoryId !== undefined || type !== t.type)) {
       setError('请选择分类')
       return
     }
@@ -198,6 +200,11 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
             <label className="field">
               <span className="field-label">分类</span>
               <select className="input" value={selectedCategory ?? ''} onChange={(e) => setCategoryId(Number(e.target.value))}>
+                {selectedCategory === undefined && (
+                  <option value="" disabled>
+                    未分类
+                  </option>
+                )}
                 {categoryOptions.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -222,6 +229,12 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
           <span className="field-label">商户</span>
           <input className="input" value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="如：盒马鲜生" />
         </label>
+        {t.goods && (
+          <div className="field">
+            <span className="field-label">商品说明</span>
+            <span className="tx-detail-goods t-body-m">{t.goods}</span>
+          </div>
+        )}
         <TagPicker
           value={tags}
           onChange={setTags}
@@ -256,11 +269,27 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
             {t.importBatchId !== undefined && <span>批次 #{t.importBatchId}</span>}
           </div>
         </div>
-        {t.externalId && (
-          <div className="field">
-            <span className="field-label">交易单号</span>
-            <span className="tx-detail-ref t-caption text-tertiary">{t.externalId}</span>
-          </div>
+        {(t.externalId || t.merchantOrderNo || t.payMethod) && (
+          <dl className="tx-detail-bill t-caption">
+            {t.externalId && (
+              <>
+                <dt className="text-tertiary">订单号</dt>
+                <dd className="tx-detail-ref text-secondary">{t.externalId}</dd>
+              </>
+            )}
+            {t.merchantOrderNo && (
+              <>
+                <dt className="text-tertiary">商户单号</dt>
+                <dd className="tx-detail-ref text-secondary">{t.merchantOrderNo}</dd>
+              </>
+            )}
+            {t.payMethod && (
+              <>
+                <dt className="text-tertiary">付款方式</dt>
+                <dd className="text-secondary">{t.payMethod}</dd>
+              </>
+            )}
+          </dl>
         )}
         {t.merged && t.merged.length > 0 && (
           <div className="field">
@@ -272,6 +301,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
                   {m.time && ` ${m.time}`}
                   {m.account && ` · ${m.account}`}
                   {[m.merchant, m.note].filter(Boolean).length > 0 && ` · ${[m.merchant, m.note].filter(Boolean).join(' / ')}`}
+                  {m.ref && <span className="tx-detail-ref text-tertiary"> · 单号 {m.ref}</span>}
                 </li>
               ))}
             </ul>

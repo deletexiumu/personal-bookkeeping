@@ -190,10 +190,10 @@ export function parseKeywords(input: string): string[] {
   return [...new Set(words)]
 }
 
-/** 商户或备注包含任一关键字（不区分大小写）；没有关键字时都算匹配 */
+/** 商户、商品说明或备注包含任一关键字（不区分大小写）；没有关键字时都算匹配 */
 export function matchKeywords(t: Transaction, keywords: string[]): boolean {
   if (keywords.length === 0) return true
-  const texts = [t.merchant, t.note].filter((s): s is string => !!s).map((s) => s.toLowerCase())
+  const texts = [t.merchant, t.goods, t.note].filter((s): s is string => !!s).map((s) => s.toLowerCase())
   return keywords.some((k) => texts.some((text) => text.includes(k)))
 }
 
