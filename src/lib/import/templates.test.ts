@@ -185,6 +185,24 @@ describe('支付宝账单模板', () => {
     expect(items.map((i) => i.selected)).toEqual([true, true, false, false, true])
   })
 
+  it('花呗、信用卡还款（不计收支）按支出入账，还款的退款按收入', () => {
+    const csv = ALIPAY_CSV.split('\r\n')
+      .slice(0, 7)
+      .concat([
+        '2026-10-15 10:00:00,信用借还,花呗,/,花呗主动还款-2026年10月账单,不计收支,1503.41,招商银行储蓄卡(5678),还款成功,2026101522006\t,,,',
+        '2026-10-16 10:00:00,信用借还,浦发银行,/,信用卡还款,不计收支,1200.00,余额宝,还款成功,2026101622007\t,,,',
+        '2026-10-17 10:00:00,退款,中国工商银行,/,退款-信用卡还款,不计收支,300.00,余额宝,退款成功,2026101722008\t,,,',
+      ])
+      .join('\r\n')
+    const sniff = sniffText(gbk(csv))
+    const { rows } = parseRows(sniff.table, sniff.mapping)
+    expect(rows.map((r) => [r.merchant, r.type, r.amount, r.skipReason])).toEqual([
+      ['花呗', 'expense', 150341, undefined],
+      ['浦发银行', 'expense', 120000, undefined],
+      ['中国工商银行', 'income', 30000, undefined],
+    ])
+  })
+
   it('旧版交易记录明细按资金状态判断方向', () => {
     const csv = [
       '支付宝交易记录明细查询',
