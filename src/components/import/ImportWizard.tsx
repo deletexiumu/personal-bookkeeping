@@ -299,11 +299,13 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
           ) : (
             <h2 className="t-title-m">
               已入账 {batch.importedCount} 条{batch.mergedCount ? `，合并 ${batch.mergedCount} 条` : ''}
+              {batch.filledCount ? `，补全 ${batch.filledCount} 条已有流水` : ''}
             </h2>
           )}
           <p className="t-body-s text-secondary">
             文件共 {batch.rowCount} 条，跳过 {batch.rowCount - batch.importedCount - (batch.mergedCount ?? 0)} 条。
             {batch.mergedCount ? '合并的是其他账单里的同一笔或退款；撤销本次导入不会还原已合并、已抵消的流水。' : ''}
+            {batch.filledCount ? '补全是给之前导入过的流水补上商品说明、单号等空字段，原有内容不变。' : ''}
             可以随时在「导入记录」里整批撤销。
           </p>
           <div className="import-actions">
