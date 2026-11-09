@@ -15,6 +15,13 @@
       "when": 1793788609780,
       "tag": "0001_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794204462903,
+      "tag": "0002_ai",
+      "breakpoints": true
     }
   ]
 }
