@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react'
 import { hrefOf } from '../../app/router'
 import { db } from '../../db'
 import { commitImport, loadDedupeCandidates, loadMerchantTransactions, loadRefundPurchases } from '../../db/imports'
+import { loadOpenOccurrences } from '../../db/plans'
+import { today } from '../../lib/date'
+import type { PlanOccurrence } from '../../lib/plans'
 import { listImportTemplates, listRules, saveImportTemplate, saveRule } from '../../db/rules'
 import { ruleFromRow } from '../../lib/import/rules'
 import type { FieldKey } from '../../lib/import/fields'
@@ -76,6 +79,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
   const [amountSign, setAmountSign] = useState<AmountSign>('negative-expense')
   const [accountId, setAccountId] = useState<number | undefined>(() => defaultAccountFor(source, accounts))
   const [items, setItems] = useState<PreviewItem[]>([])
+  const [occurrences, setOccurrences] = useState<PlanOccurrence[]>([])
   const [busy, setBusy] = useState(false)
   const [batch, setBatch] = useState<ImportBatch | null>(null)
   const [reverting, setReverting] = useState(false)
@@ -164,6 +168,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
       const existing = await loadDedupeCandidates(db, rows.map((r) => r.date), refs)
       const purchases = await loadRefundPurchases(db, rows.filter(isRefundRow).map((r) => r.date))
       const batchSource = new Map((await db.importBatches.toArray()).map((b) => [b.id, b.source]))
+      setOccurrences(await loadOpenOccurrences(db, rows.map((r) => r.date), today()))
       setItems(
         buildPreview(rows, {
           categories,
@@ -285,6 +290,7 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
           items={items}
           errors={parsed.errors}
           categories={categories}
+          occurrences={occurrences}
           busy={busy}
           onChange={setItems}
           onBack={() => setStep('mapping')}
@@ -300,12 +306,14 @@ export function ImportWizard({ source, categories, accounts, onExit }: Props) {
             <h2 className="t-title-m">
               已入账 {batch.importedCount} 条{batch.mergedCount ? `，合并 ${batch.mergedCount} 条` : ''}
               {batch.filledCount ? `，补全 ${batch.filledCount} 条已有流水` : ''}
+              {batch.plannedCount ? `，${batch.plannedCount} 条对上预算` : ''}
             </h2>
           )}
           <p className="t-body-s text-secondary">
             文件共 {batch.rowCount} 条，跳过 {batch.rowCount - batch.importedCount - (batch.mergedCount ?? 0)} 条。
             {batch.mergedCount ? '合并的是其他账单里的同一笔或退款；撤销本次导入不会还原已合并、已抵消的流水。' : ''}
             {batch.filledCount ? '补全是给之前导入过的流水补上商品说明、单号等空字段，原有内容不变。' : ''}
+            {batch.plannedCount ? '对上预算的流水已转为那一期预算的实际，撤销导入后那一期回到待发生。' : ''}
             可以随时在「导入记录」里整批撤销。
           </p>
           <div className="import-actions">

@@ -1,0 +1,120 @@
+/* ---------- 预算账单（预算页「预算账单」、流水详情里的预算） ---------- */
+.budget-page > .segmented {
+  justify-self: start;
+}
+
+.plan-summary {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+
+.plan-summary p {
+  margin: 0;
+}
+
+.plan-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.plan-kpis div {
+  display: grid;
+  gap: 2px;
+}
+
+.plan-kpis dd {
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .plan-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.plan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.plan-toolbar .settings-group-title {
+  margin: 0;
+}
+
+.plan-match-fields {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.plan-match-fields legend {
+  padding: 0 var(--space-1);
+}
+
+.plan-match-fields p {
+  margin: 0;
+}
+
+.plan-history {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.plan-history > p {
+  margin: 0;
+}
+
+.plan-occurrences {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.plan-occurrence {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.plan-occurrence + .plan-occurrence {
+  border-top: 1px solid var(--border-default);
+}
+
+.plan-occurrence[data-status='skipped'] .t-body-m {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+.plan-occurrence-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: end;
+}
+
+@media (max-width: 767px) {
+  .plan-occurrence {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .plan-occurrence-amounts {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+.tx-detail-plan {
+  margin: 0;
+}

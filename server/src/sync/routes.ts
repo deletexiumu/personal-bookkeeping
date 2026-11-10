@@ -16,6 +16,7 @@ export const SYNC_TABLES = [
   'importTemplates',
   'tags',
   'tagRules',
+  'plans',
 ] as const
 
 /** 一次推送最多多少条改动 */

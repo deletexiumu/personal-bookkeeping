@@ -10,6 +10,7 @@ export const BACKUP_TABLES = [
   'importTemplates',
   'tags',
   'tagRules',
+  'plans',
 ] as const
 
 export type BackupTable = (typeof BACKUP_TABLES)[number]
@@ -24,6 +25,7 @@ export const BACKUP_TABLE_LABELS: Record<BackupTable, string> = {
   importTemplates: '映射模板',
   tags: '标签',
   tagRules: '商户标签',
+  plans: '预算账单',
 }
 
 export const BACKUP_APP = 'taozhubu'
@@ -60,6 +62,8 @@ const VALIDATORS: Record<BackupTable, (r: Row) => boolean> = {
   importTemplates: (r) => isStr(r.name) && Array.isArray(r.headers) && Array.isArray(r.columns),
   tags: (r) => isStr(r.name),
   tagRules: (r) => isStr(r.merchant) && Array.isArray(r.tags) && (r.tags as unknown[]).every(isStr),
+  plans: (r) =>
+    isStr(r.name) && (r.type === 'expense' || r.type === 'income') && isInt(r.amount) && (r.amount as number) > 0 && isDate(r.startDate),
 }
 
 export interface ParsedBackup {

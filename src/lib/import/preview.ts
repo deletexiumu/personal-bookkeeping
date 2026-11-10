@@ -39,6 +39,8 @@ export interface PreviewItem {
   backfill?: Partial<Transaction>
   /** 用户选了「单独入账」：原来的合并候选，可以改回合并 */
   declinedMerge?: Pick<PreviewItem, 'mergeWith' | 'weakMerge' | 'mergeAsTransfer' | 'transferPair' | 'refundOf'>
+  /** 用户对预算账单对应的选择：on 疑似时也对应，off 不对应（见 src/lib/plans.ts assignPreviewPlans） */
+  planChoice?: 'on' | 'off'
   selected: boolean
 }
 

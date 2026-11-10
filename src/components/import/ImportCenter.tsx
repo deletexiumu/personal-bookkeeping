@@ -94,7 +94,7 @@ export function ImportCenter({ onStart }: { onStart: (source: ImportSource) => v
                       {source.name} · {batch.fileName}
                     </span>
                     <span className="t-caption text-tertiary">
-                      {formatStamp(batch.createdAt)} · {batch.rowCount} 条，入账 {batch.importedCount}{batch.mergedCount ? `，合并 ${batch.mergedCount}` : ''}{batch.filledCount ? `，补全 ${batch.filledCount}` : ''}
+                      {formatStamp(batch.createdAt)} · {batch.rowCount} 条，入账 {batch.importedCount}{batch.mergedCount ? `，合并 ${batch.mergedCount}` : ''}{batch.filledCount ? `，补全 ${batch.filledCount}` : ''}{batch.plannedCount ? `，对上预算 ${batch.plannedCount}` : ''}
                     </span>
                   </div>
                   {reverted ? (

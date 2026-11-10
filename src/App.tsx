@@ -56,7 +56,7 @@ export default function App() {
   } else if (route === 'accounts') {
     page = <AccountsPage accounts={accounts} />
   } else if (route === 'budget') {
-    page = <BudgetPage categories={categories} />
+    page = <BudgetPage categories={categories} accounts={accounts} />
   } else if (route === 'categories') {
     page = <CategoriesPage categories={categories} />
   } else if (route === 'import') {
