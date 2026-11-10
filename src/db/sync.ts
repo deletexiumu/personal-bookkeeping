@@ -20,6 +20,7 @@ export const SYNC_TABLES = [
   'importTemplates',
   'tags',
   'tagRules',
+  'plans',
 ] as const
 
 export type SyncTable = (typeof SYNC_TABLES)[number]

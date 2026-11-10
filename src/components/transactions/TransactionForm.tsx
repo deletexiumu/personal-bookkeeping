@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowRight } from 'lucide-react'
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { db } from '../../db'
+import { autoLinkTransaction } from '../../db/plans'
 import { addTransaction, addTransfer, categoryUsage, deleteTransactions } from '../../db/transactions'
 import { nowTime, today } from '../../lib/date'
 import { applyKey, evaluateAmount, hasOperation, keyFromKeyboard, normalizeExpression } from '../../lib/expression'
@@ -106,6 +107,7 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
     }
 
     let ids: number[]
+    let planName: string | undefined
     setSaving(true)
     try {
       if (type === 'transfer') {
@@ -145,6 +147,8 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
           accountId: selectedAccount,
           [type === 'expense' ? 'expenseCategoryId' : 'incomeCategoryId']: selectedCategory,
         })
+        // 对得上的预算账单那一期转为实际
+        planName = (await autoLinkTransaction(db, ids[0], today()))?.plan.name
       }
       // 新写的标签加进标签目录，下次可以直接点选
       if (tagList.length > 0) await ensureTags(db, tagList)
@@ -153,7 +157,7 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
     }
 
     toast.show({
-      message: `已记${TYPE_LABEL[type]} ${formatCents(result.cents)}`,
+      message: `已记${TYPE_LABEL[type]} ${formatCents(result.cents)}${planName ? `，对上预算「${planName}」` : ''}`,
       action: { label: '撤销', onClick: () => void deleteTransactions(db, ids) },
     })
     reset(!closeAfter)

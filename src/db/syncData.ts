@@ -24,6 +24,7 @@ const FOREIGN_KEYS: Partial<Record<SyncTable, Record<string, RefTable>>> = {
   budgets: { categoryId: 'categories' },
   rules: { categoryId: 'categories' },
   importTemplates: { accountId: 'accounts' },
+  plans: { categoryId: 'categories', accountId: 'accounts' },
 }
 const REF_TABLES: RefTable[] = ['accounts', 'categories', 'importBatches']
 const LOCAL_FIELDS = new Set(['id', 'uid', 'modifiedAt', 'dirty'])

@@ -1,9 +1,11 @@
-import { shiftDate } from '../lib/date'
+import { shiftDate, today } from '../lib/date'
+import { assignPreviewPlans } from '../lib/plans'
 import { describe } from '../lib/merchant'
 import { backfillOf, flowOf, mergeTransaction, stillMergeable, transferFee, toTransaction, type PreviewItem } from '../lib/import/preview'
 import { purchaseEntry, REFUND_WINDOW_DAYS, refundEntry } from '../lib/import/refund'
 import type { ImportBatch, ImportSource, MergedEntry, Transaction } from '../types'
 import type { BookkeepingDB } from './index'
+import { loadOpenOccurrences } from './plans'
 
 /** 去重候选：日期范围前后各多 2 天的已有流水（本人账户间转账两边最多差 2 天），加上单号相同的流水 */
 export async function loadDedupeCandidates(db: BookkeepingDB, dates: string[], refs: string[]): Promise<Transaction[]> {
@@ -41,6 +43,8 @@ export interface CommitInput {
   items: PreviewItem[]
   /** 本次账单的名称，合并时记在明细里，如「招商银行流水」 */
   sourceLabel?: string
+  /** 今天（判断预算期是否逾期），测试用 */
+  today?: string
 }
 
 /** 已有流水的来源说明：手记，或导入它的账单（银行流水按文件名里的银行名） */
@@ -61,11 +65,12 @@ export function sourceLabelOf(t: Transaction, batch: ImportBatch | undefined): s
  * 退款记进原支出的明细。原支出已变（被删、金额不对）时退款按普通收入写入。
  * 写入前按交易单号再去重一次：账本里已有同单号的流水（例如预览之后在别处又导入了一份重叠的账单），
  * 或本次勾选里单号重复的行，都不再写入。
+ * 预算账单：按保存时的预算期重新分配（见 assignPreviewPlans），对上的新增流水或合并后的那条写上 planRef。
  */
 export async function commitImport(db: BookkeepingDB, input: CommitInput): Promise<number> {
   const selected = input.items.filter((i) => i.selected)
   const now = Date.now()
-  return db.transaction('rw', [db.transactions, db.importBatches, db.accounts], async () => {
+  return db.transaction('rw', [db.transactions, db.importBatches, db.accounts, db.plans], async () => {
     const refs = [...new Set(selected.flatMap((i) => (i.row.ref ? [i.row.ref] : [])))]
     const taken = new Set(
       refs.length > 0 ? (await db.transactions.where('externalId').anyOf(refs).toArray()).map((t) => t.externalId) : [],
@@ -77,6 +82,11 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
       taken.add(ref)
       return true
     })
+    const occurrences = await loadOpenOccurrences(db, chosen.map((i) => i.row.date), input.today ?? today())
+    const planOf = new Map(
+      [...assignPreviewPlans(chosen, occurrences)].flatMap(([key, a]) => (a.linked ? [[key, a.occurrence.ref] as const] : [])),
+    )
+    let planned = 0
     const accountNames = new Map((await db.accounts.toArray()).map((a) => [a.id, a.name]))
     const batchCache = new Map<number, ImportBatch | undefined>()
     const batchOf = async (id: number | undefined) => {
@@ -94,6 +104,11 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
     const insert = (item: PreviewItem, patch: Partial<Draft> = {}) => {
       const draft: Draft = { ...toTransaction(item), ...patch }
       if (draft.categoryId === undefined) delete draft.categoryId
+      const ref = planOf.get(item.key)
+      if (ref && !draft.excluded && draft.type !== 'transfer') {
+        draft.planRef = ref
+        planned++
+      }
       drafts.push(draft)
       draftOf.set(item.key, draft)
     }
@@ -117,6 +132,11 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
         existing: sourceLabelOf(current, await batchOf(current.importBatchId)),
         accountName: (id) => accountNames.get(id),
       })
+      const ref = planOf.get(item.key)
+      if (ref && !merged.planRef && merged.type !== 'transfer' && !merged.excluded) {
+        merged.planRef = ref
+        planned++
+      }
       save(merged)
       mergedRows++
       // 提现扣的手续费：转账按到账金额记，差额记一笔支出
@@ -184,6 +204,7 @@ export async function commitImport(db: BookkeepingDB, input: CommitInput): Promi
       importedCount: drafts.length,
       ...(mergedRows > 0 ? { mergedCount: mergedRows } : {}),
       ...(filled > 0 ? { filledCount: filled } : {}),
+      ...(planned > 0 ? { plannedCount: planned } : {}),
       createdAt: now,
       status: 'done',
     })) as number

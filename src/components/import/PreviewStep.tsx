@@ -1,11 +1,12 @@
 import { FileCheck2 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { BACKFILL_LABELS, isNeutral, statusOf, summarizePreview, type CategorySource, type PreviewItem } from '../../lib/import/preview'
 import { ruleFromRow } from '../../lib/import/rules'
 import { normalizeText } from '../../lib/import/similarity'
 import type { RowError } from '../../lib/import/table'
 import { formatCents } from '../../lib/money'
 import { describe } from '../../lib/merchant'
+import { assignPreviewPlans, type PlanAssignment, type PlanOccurrence } from '../../lib/plans'
 import type { Category } from '../../types'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -26,6 +27,8 @@ interface Props {
   items: PreviewItem[]
   errors: RowError[]
   categories: Category[]
+  /** 还能对上的预算期（导入日期前后） */
+  occurrences?: PlanOccurrence[]
   busy: boolean
   onChange: (items: PreviewItem[]) => void
   onBack: () => void
@@ -53,6 +56,13 @@ function duplicateText(item: PreviewItem): string {
   return fields.length > 0 ? `${same}，入账时给那条补上${fields.join('、')}` : same
 }
 
+function planText(a: PlanAssignment): string {
+  const o = a.occurrence
+  const what = `预算「${o.plan.name}」${shortDate(o.date)}`
+  if (a.linked) return `对应${what}，入账后转为实际`
+  return a.strong ? `不对应${what}` : `疑似${what}`
+}
+
 function refundText(item: PreviewItem): string {
   const r = item.refundOf
   if (!r) return ''
@@ -67,8 +77,10 @@ function mergeText(item: PreviewItem): string {
 }
 
 /** 第 4 步：预览确认（M05）。可勾选、改分类；疑似重复和忽略的行默认不勾选。 */
-export function PreviewStep({ fileName, sourceName, items, errors, categories, busy, onChange, onBack, onCommit }: Props) {
+export function PreviewStep({ fileName, sourceName, items, errors, categories, occurrences, busy, onChange, onBack, onCommit }: Props) {
   const [filter, setFilter] = useState<Filter>('all')
+  const plans = useMemo(() => assignPreviewPlans(items, occurrences ?? []), [items, occurrences])
+  const plannedCount = [...plans.values()].filter((a) => a.linked).length
   const summary = summarizePreview(items)
   const dates = items.map((i) => i.row.date).sort()
   const income = items.filter((i) => i.row.type === 'income').length
@@ -123,6 +135,13 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
     }
   }
   const rememberCount = items.filter((i) => i.remember && i.selected).length
+
+  /** 对应 / 不对应预算：强对应默认对应，疑似默认不对应，点一下切换 */
+  function togglePlan(item: PreviewItem, a: PlanAssignment) {
+    const want = !a.linked
+    const byDefault = a.strong
+    patch(item.key, { planChoice: want === byDefault ? undefined : want ? 'on' : 'off' })
+  }
 
   const allVisibleSelected = visible.length > 0 && visible.every((i) => i.selected)
   function toggleVisible() {
@@ -239,6 +258,15 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
                   {status === 'merge' && ` · ${mergeText(item)}`}
                   {status === 'duplicate' && ` · ${duplicateText(item)}`}
                   {status === 'ignored' && isNeutral(row) && ' · 勾选后按「不计收支」入账，不计入收支统计'}
+                  {plans.has(item.key) && (
+                    <>
+                      {' · '}
+                      <span className={plans.get(item.key)!.linked ? 'text-brand' : undefined}>{planText(plans.get(item.key)!)}</span>{' '}
+                      <button type="button" className="link-button" onClick={() => togglePlan(item, plans.get(item.key)!)}>
+                        {plans.get(item.key)!.linked ? '不对应' : '对应'}
+                      </button>
+                    </>
+                  )}
                   {(((item.mergeWith || item.refundOf) && status !== 'ignored') || item.declinedMerge) && (
                     <>
                       {' · '}
@@ -293,6 +321,7 @@ export function PreviewStep({ fileName, sourceName, items, errors, categories, b
           {summary.selectedUncategorized > 0 && (
             <p className="t-caption text-tertiary">{summary.selectedUncategorized} 条将以「未分类」入账</p>
           )}
+          {plannedCount > 0 && <p className="t-caption text-tertiary">{plannedCount} 条对上预算账单，入账后转为实际</p>}
           {rememberCount > 0 && <p className="t-caption text-tertiary">入账后记住 {rememberCount} 条分类规则</p>}
           {fillCount > 0 && <p className="t-caption text-tertiary">另给 {fillCount} 条已导入过的流水补上商品说明、单号等空字段</p>}
         </div>

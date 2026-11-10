@@ -2,6 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { PageHeader } from '../components/layout/AppShell'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { PlanPanel } from '../components/plans/PlanPanel'
+import { Segmented } from '../components/ui/Segmented'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
@@ -10,7 +12,7 @@ import { listByMonth } from '../db/transactions'
 import { budgetStatus, daysLeftInMonth, expenseByCategory, type BudgetStatus } from '../lib/budget'
 import { formatMonth, monthOf, today } from '../lib/date'
 import { formatCents, parseAmountToCents } from '../lib/money'
-import type { Category } from '../types'
+import type { Account, Category } from '../types'
 
 const LEVEL_TEXT = { ok: '', warning: 'text-warning', over: 'text-expense' } as const
 
@@ -74,8 +76,37 @@ function StatusLine({ status, daysLeft }: { status: BudgetStatus; daysLeft?: num
   )
 }
 
-/** 预算（M03 / D02 预算执行）：本月总预算与分类预算，每月循环生效 */
-export function BudgetPage({ categories }: { categories: Category[] }) {
+type Tab = 'quota' | 'plans'
+
+/**
+ * 预算页两个标签：
+ * - 月度额度（M03 / D02 预算执行）：本月总预算与分类预算，每月循环生效
+ * - 预算账单：计划中的单笔 / 周期收支，导入或记一笔对上后转为实际（见 PlanPanel）
+ */
+export function BudgetPage({ categories, accounts }: { categories: Category[]; accounts: Account[] }) {
+  const [tab, setTab] = useState<Tab>(() => (window.location.hash.includes('tab=plans') ? 'plans' : 'quota'))
+  const month = monthOf(today())
+  return (
+    <div className="page budget-page">
+      <PageHeader
+        title="预算"
+        actions={tab === 'quota' && <span className="t-body-s text-secondary">{formatMonth(month)} · 每月循环</span>}
+      />
+      <Segmented<Tab>
+        label="预算类型"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'quota', label: '月度额度' },
+          { value: 'plans', label: '预算账单' },
+        ]}
+      />
+      {tab === 'quota' ? <QuotaPanel categories={categories} /> : <PlanPanel categories={categories} accounts={accounts} />}
+    </div>
+  )
+}
+
+function QuotaPanel({ categories }: { categories: Category[] }) {
   const toast = useToast()
   const month = monthOf(today())
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
@@ -102,9 +133,7 @@ export function BudgetPage({ categories }: { categories: Category[] }) {
   }
 
   return (
-    <div className="page">
-      <PageHeader title="预算" actions={<span className="t-body-s text-secondary">{formatMonth(month)} · 每月循环</span>} />
-
+    <>
       <section className="card budget-total" aria-label="总预算">
         <div className="budget-row-head">
           <div>
@@ -151,6 +180,6 @@ export function BudgetPage({ categories }: { categories: Category[] }) {
         </ul>
       </section>
       <p className="t-caption text-tertiary">已用超过 80% 显示橙色，超过 100% 显示红色。输入框清空即取消该预算。</p>
-    </div>
+    </>
   )
 }

@@ -1,5 +1,5 @@
 import { Dexie, type EntityTable } from 'dexie'
-import type { Account, Budget, Category, CategoryRule, ImportBatch, ImportTemplate, SyncMeta, Tag, TagRule, Transaction } from '../types'
+import type { Account, Budget, Category, CategoryRule, ImportBatch, ImportTemplate, Plan, SyncMeta, Tag, TagRule, Transaction } from '../types'
 import {
   DEFAULT_ACCOUNT_TYPES,
   DEFAULT_ACCOUNTS,
@@ -24,6 +24,7 @@ export class BookkeepingDB extends Dexie {
   importTemplates!: EntityTable<ImportTemplate, 'id'>
   tags!: EntityTable<Tag, 'id'>
   tagRules!: EntityTable<TagRule, 'id'>
+  plans!: EntityTable<Plan, 'id'>
   syncTombstones!: Dexie.Table<Tombstone, [string, string]>
   /** 自动备份：数据库结构升级前、用云端数据替换本机前各留一份，可在设置页下载 */
   upgradeBackups!: Dexie.Table<UpgradeBackup, number>
@@ -170,6 +171,12 @@ export class BookkeepingDB extends Dexie {
         tagRules: '++id, &uid, dirty, merchant',
       })
       .upgrade((tx) => tx.table('tags').bulkAdd(DEFAULT_TAGS.map((t) => ({ ...t, modifiedAt: 0 }))))
+    // v9：预算账单；流水按对应的预算期（planRef）索引
+    this.version(9).stores({
+      transactions:
+        '++id, &uid, dirty, date, type, categoryId, accountId, transferAccountId, source, importBatchId, *tags, externalId, planRef',
+      plans: '++id, &uid, dirty, startDate',
+    })
     // 默认分类、账户和标签是每台设备都有的基线：modifiedAt 为 0、不推送，云端有改动时以云端为准
     this.on('populate', (tx) => {
       tx.table('categories').bulkAdd(DEFAULT_CATEGORIES.map((c) => ({ ...c, modifiedAt: 0 })))

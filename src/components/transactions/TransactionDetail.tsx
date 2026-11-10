@@ -9,6 +9,7 @@ import { merchantOf } from '../../lib/merchant'
 import { formatTags, normalizeTags } from '../../lib/tags'
 import type { Account, Category, Transaction } from '../../types'
 import { CategoryIcon } from '../CategoryIcon'
+import { PlanLink } from '../plans/PlanLink'
 import { TagPicker } from '../tags/TagPicker'
 import { useTags } from '../tags/useTags'
 import { Button, IconButton } from '../ui/Button'
@@ -262,6 +263,7 @@ export function TransactionDetail({ transaction: t, categories, accounts, lookup
             不计收支（本人账户间挪钱等）
           </label>
         )}
+        {!isTransfer && <PlanLink transaction={t} />}
         <div className="field">
           <span className="field-label">来源</span>
           <div className="tx-detail-source t-caption text-tertiary">

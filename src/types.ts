@@ -67,6 +67,11 @@ export interface Transaction extends SyncMeta {
    * 统计只算一次，这里保留银行流水那一侧的原始信息
    */
   merged?: MergedEntry[]
+  /**
+   * 对应的预算账单那一期：`${预算 uid}@${期日期}`（见 src/lib/plans.ts）。有值表示这笔实际收支实现了那一期预算，
+   * 一期可以对应多笔（分几次付清），删掉流水后那一期回到待发生
+   */
+  planRef?: string
   createdAt: number
   updatedAt: number
 }
@@ -151,6 +156,8 @@ export interface ImportBatch extends SyncMeta {
   mergedCount?: number
   /** 重复导入时给已有流水补上空字段（商品说明、单号等）的条数 */
   filledCount?: number
+  /** 对上预算账单、转为实际的条数 */
+  plannedCount?: number
   createdAt: number
   status: 'done' | 'reverted'
   revertedAt?: number
@@ -208,4 +215,45 @@ export interface TagRule extends SyncMeta {
   merchant: string
   tags: string[]
   createdAt?: number
+}
+
+/** 预算账单的重复方式：不重复（一次性）、每周、每月、每年 */
+export type PlanRepeat = 'none' | 'weekly' | 'monthly' | 'yearly'
+
+/**
+ * 预算账单：计划中会发生的单笔或周期收支（房租、工资、保险）。与月度预算额度（Budget）不同，它对应具体的某一笔，有日期。
+ * 每一期不单独存，读取时按重复规则展开（src/lib/plans.ts）；实际流水的 planRef 指向某一期，表示那一期已实现。
+ * 预算永远不计入实际收支统计。
+ */
+export interface Plan extends SyncMeta {
+  id?: number
+  /** 名称，如「房租」；也当作匹配关键字 */
+  name: string
+  type: CategoryType
+  /** 每期计划金额（分） */
+  amount: number
+  categoryId?: number
+  /** 指定了账户时，没有关键字命中的流水要账户相同才算对上 */
+  accountId?: number
+  note?: string
+  tags?: string[]
+  repeat: PlanRepeat
+  /** 每隔几周 / 月 / 年，默认 1 */
+  interval?: number
+  /** 第一期日期 YYYY-MM-DD；每月 / 每年按这一天重复，没有这一天的月份取月末 */
+  startDate: string
+  /** 最后一期不晚于这一天；不填一直重复 */
+  endDate?: string
+  /** 匹配关键字：商户、备注或商品说明包含其一即算对上；设了关键字时必须命中 */
+  keywords?: string[]
+  /** 金额允许偏差（百分比），默认 0 即必须相等 */
+  tolerance?: number
+  /** 日期允许偏差（天），默认 3 */
+  window?: number
+  /** 跳过的期（期日期） */
+  skipped?: string[]
+  /** 单期改过的计划金额：期日期 → 金额（分） */
+  overrides?: Record<string, number>
+  createdAt: number
+  updatedAt: number
 }
