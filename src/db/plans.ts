@@ -185,3 +185,52 @@ export async function autoLinkTransaction(db: BookkeepingDB, txId: number, today
     return a.occurrence
   })
 }
+
+export interface RealizeInput {
+  amount: number
+  accountId: number
+  date: string
+  note?: string
+}
+
+/**
+ * 「已发生」：按这一期预算记一笔实际流水并直接关联（分类、标签沿用预算），返回新流水 ID。
+ * 之后导入的钱包账单会按现有规则和这条手记合并。
+ */
+export async function realizeOccurrence(db: BookkeepingDB, o: PlanOccurrence, input: RealizeInput): Promise<number> {
+  if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new Error('金额不正确')
+  const { plan } = o
+  const now = Date.now()
+  const tx: Transaction = {
+    type: plan.type,
+    amount: input.amount,
+    accountId: input.accountId,
+    date: input.date,
+    note: input.note ?? plan.note ?? plan.name,
+    source: 'manual',
+    planRef: o.ref,
+    createdAt: now,
+    updatedAt: now,
+  }
+  if (plan.categoryId !== undefined) tx.categoryId = plan.categoryId
+  if (plan.tags?.length) tx.tags = plan.tags
+  return (await db.transactions.add(tx)) as number
+}
+
+/** 改某一期的计划金额；amount 为 undefined 或等于每期金额时恢复默认 */
+export async function setOccurrenceAmount(db: BookkeepingDB, planId: number, date: string, amount: number | undefined): Promise<void> {
+  await db.transaction('rw', db.plans, async () => {
+    const plan = await db.plans.get(planId)
+    if (!plan) return
+    const overrides = { ...plan.overrides }
+    if (amount === undefined || amount === plan.amount) delete overrides[date]
+    else {
+      if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('金额不正确')
+      overrides[date] = amount
+    }
+    const next: Plan = { ...plan, updatedAt: Date.now() }
+    if (Object.keys(overrides).length) next.overrides = overrides
+    else delete next.overrides
+    await db.plans.put(next)
+  })
+}

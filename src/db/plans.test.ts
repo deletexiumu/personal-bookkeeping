@@ -2,7 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { PreviewItem } from '../lib/import/preview'
 import { commitImport, revertImport } from './imports'
 import { BookkeepingDB } from './index'
-import { autoLinkTransaction, deletePlan, loadOccurrences, savePlan, setOccurrenceSkipped, setTransactionPlan, type PlanInput } from './plans'
+import {
+  autoLinkTransaction,
+  deletePlan,
+  loadOccurrences,
+  realizeOccurrence,
+  savePlan,
+  setOccurrenceAmount,
+  setOccurrenceSkipped,
+  setTransactionPlan,
+  type PlanInput,
+} from './plans'
 import { addTransaction } from './transactions'
 
 let db: BookkeepingDB
@@ -100,5 +110,20 @@ describe('预算账单', () => {
     ]
     const batchId = await commitImport(db, { source: 'wechat', fileName: 'w.xlsx', rowCount: 1, items, today: TODAY })
     expect((await db.transactions.where('importBatchId').equals(batchId).first())!.planRef).toBeUndefined()
+  })
+})
+
+describe('从预算记一笔、改单期金额', () => {
+  it('已发生：按这一期记一笔并关联；单期金额可改可恢复', async () => {
+    const { id } = await savePlan(db, { ...rent, startDate: '2026-11-15', tags: ['房租'] }, undefined, TODAY)
+    let [occ] = await loadOccurrences(db, '2026-11-01', '2026-11-30', TODAY)
+    const txId = await realizeOccurrence(db, occ, { amount: 450000, accountId: 2, date: TODAY })
+    expect(await db.transactions.get(txId)).toMatchObject({ categoryId: 5, tags: ['房租'], note: '房租', planRef: occ.ref, source: 'manual' })
+    ;[occ] = await loadOccurrences(db, '2026-11-01', '2026-11-30', TODAY)
+    expect(occ.status).toBe('done')
+    await setOccurrenceAmount(db, id, '2026-12-15', 480000)
+    expect((await loadOccurrences(db, '2026-12-01', '2026-12-31', TODAY))[0].amount).toBe(480000)
+    await setOccurrenceAmount(db, id, '2026-12-15', undefined)
+    expect((await db.plans.get(id))!.overrides).toBeUndefined()
   })
 })

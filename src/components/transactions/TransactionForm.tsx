@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowRight } from 'lucide-react'
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { db } from '../../db'
-import { autoLinkTransaction } from '../../db/plans'
+import { autoLinkTransaction, savePlan } from '../../db/plans'
 import { addTransaction, addTransfer, categoryUsage, deleteTransactions } from '../../db/transactions'
 import { nowTime, today } from '../../lib/date'
 import { applyKey, evaluateAmount, hasOperation, keyFromKeyboard, normalizeExpression } from '../../lib/expression'
@@ -53,6 +53,8 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
   const [tags, setTags] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  // 日期在未来的收支默认记为预算账单（还没发生），可以取消勾选按实际记
+  const [notPlan, setNotPlan] = useState(false)
 
   const amountRef = useRef<HTMLInputElement>(null)
   const usage = useLiveQuery(() => categoryUsage(db), [], new Map<number, number>())
@@ -80,6 +82,7 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
 
   const result = evaluateAmount(expr)
   const isFuture = date > today()
+  const asPlan = isFuture && type !== 'transfer' && !notPlan
 
   function reset(keepOpen: boolean) {
     setExpr('')
@@ -132,6 +135,20 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
       } else {
         if (selectedCategory === undefined) {
           setError('请选择分类')
+          return
+        }
+        if (asPlan) {
+          const name = note.trim() || categories.find((c) => c.id === selectedCategory)?.name || '预算'
+          await savePlan(
+            db,
+            { name, type, amount: result.cents, categoryId: selectedCategory, accountId: selectedAccount, startDate: date, repeat: 'none', tags: tagList },
+            undefined,
+            today(),
+          )
+          if (tagList.length > 0) await ensureTags(db, tagList)
+          toast.show({ message: `已记为预算「${name}」${date.slice(5)} ${formatCents(result.cents)}，发生后导入或记一笔会转为实际` })
+          reset(!closeAfter)
+          if (closeAfter) onDone?.()
           return
         }
         ids = [
@@ -326,7 +343,13 @@ export function TransactionForm({ categories, accounts, onDone }: Props) {
         </label>
       </div>
 
-      {isFuture && <p className="form-warning t-caption">日期在未来，确认无误后再保存。</p>}
+      {isFuture && type !== 'transfer' && (
+        <label className="check-field t-caption">
+          <input type="checkbox" checked={!notPlan} onChange={(e) => setNotPlan(!e.target.checked)} />
+          还没发生，记为预算账单（不计入实际收支，到时对上实际账单后转为实际）
+        </label>
+      )}
+      {isFuture && !asPlan && <p className="form-warning t-caption">日期在未来，确认无误后再保存。</p>}
       {error && (
         <p className="form-error t-body-s" role="alert">
           {error}
