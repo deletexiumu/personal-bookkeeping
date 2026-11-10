@@ -214,7 +214,7 @@ describe('App', () => {
 
       await user.click(screen.getByRole('button', { name: '上一年' }))
       expect(await screen.findByText(`${Number(year) - 1}年`)).toBeInTheDocument()
-      expect(screen.getByText('这一年还没有记录，记下第一笔吧。')).toBeInTheDocument()
+      expect(await screen.findByText('这一年还没有记录，记下第一笔吧。')).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: '下一年' }))
       await user.click(screen.getByRole('radio', { name: '月' }))
       expect(await screen.findByText('共 3 笔')).toBeInTheDocument()
