@@ -108,6 +108,13 @@ export function monthOfPeriod(period: Period): string | undefined {
   return period.end.slice(0, 7) === month ? month : undefined
 }
 
+/** 区间在明细页能用哪种范围查看：一个自然月内返回 'YYYY-MM'，一个自然年内返回 'YYYY'，跨年返回 undefined */
+export function listScopeOfPeriod(period: Pick<Period, 'start' | 'end'>): string | undefined {
+  if (period.start.slice(0, 7) === period.end.slice(0, 7)) return period.start.slice(0, 7)
+  if (period.start.slice(0, 4) === period.end.slice(0, 4)) return period.start.slice(0, 4)
+  return undefined
+}
+
 /** 趋势图的一根柱子：一天或一个月 */
 export interface Bucket {
   key: string

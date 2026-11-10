@@ -6,7 +6,7 @@ import { PageHeader } from '../components/layout/AppShell'
 import { makeLookup, signedAmount, titleOf } from '../components/transactions/display'
 import { FilterBar } from '../components/transactions/FilterBar'
 import { MonthSummary } from '../components/transactions/MonthSummary'
-import { MonthSwitcher } from '../components/transactions/MonthSwitcher'
+import { MonthSwitcher, type ListUnit } from '../components/transactions/MonthSwitcher'
 import { TransactionDetail } from '../components/transactions/TransactionDetail'
 import { TransactionList } from '../components/transactions/TransactionList'
 import { TransactionTable } from '../components/transactions/TransactionTable'
@@ -16,7 +16,7 @@ import { Dialog } from '../components/ui/Dialog'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
 import { listBudgets } from '../db/budgets'
-import { deleteTransaction, listByMonth, restoreTransactions, summarize } from '../db/transactions'
+import { deleteTransaction, listByRange, restoreTransactions, summarize } from '../db/transactions'
 import { daysLeftInMonth, monthBudgets } from '../lib/budget'
 import { useAssistantPage } from '../lib/ai/context'
 import { transactionsPageData } from '../lib/ai/pages'
@@ -32,7 +32,7 @@ interface Props {
 }
 
 /**
- * 明细页（M01 / D01）：月份切换、本月汇总、搜索筛选、流水列表。
+ * 明细页（M01 / D01）：月份切换（可切到按年看整年）、本月 / 本年汇总、搜索筛选、流水列表。
  * 宽屏（≥ 1280）用表格 + 右侧详情面板，其余宽度用按天分组的列表 + 详情弹窗。
  */
 export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
@@ -40,12 +40,26 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   const wide = useMediaQuery(WIDE_QUERY)
   // 从分析页下钻过来时，链接里带着月份和筛选条件
   const [initial] = useState(() => parseTransactionsHash(window.location.hash))
-  const [month, setMonth] = useState(() => initial.month ?? monthOf(today()))
+  // 按年查看时 month 仍记着一个月份（今年为本月，其余年份为 1 月），切回按月时回到这个月
+  const [unit, setUnit] = useState<ListUnit>(() => (initial.year && !initial.month ? 'year' : 'month'))
+  const [month, setMonth] = useState(() => {
+    if (initial.month) return initial.month
+    const current = monthOf(today())
+    if (initial.year && initial.year !== current.slice(0, 4)) return `${initial.year}-01`
+    return current
+  })
   const [filter, setFilter] = useState<TransactionFilter>(initial.filter)
   const [selectedId, setSelectedId] = useState<number>()
-  const transactions = useLiveQuery(() => listByMonth(db, month), [month], [])
+  const byYear = unit === 'year'
+  const year = month.slice(0, 4)
+  const [start, end] = byYear ? [`${year}-01-01`, `${year}-12-31`] : [`${month}-01`, `${month}-31`]
+  const transactions = useLiveQuery(() => listByRange(db, start, end), [start, end], [])
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
-  const totalBudget = useMemo(() => monthBudgets(budgets, transactions).total, [budgets, transactions])
+  // 预算按月，按年查看时不显示
+  const totalBudget = useMemo(
+    () => (byYear ? undefined : monthBudgets(budgets, transactions).total),
+    [byYear, budgets, transactions],
+  )
   const { tags, resolve } = useTags()
   const lookup = useMemo(() => makeLookup(categories, accounts, resolve), [categories, accounts, resolve])
   const visible = useMemo(
@@ -70,9 +84,9 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   )
 
   const filtered = !isFilterEmpty(filter)
-  useAssistantPage(`明细 · ${formatMonth(month)}${filtered ? ' · 已筛选' : ''}`, () =>
+  useAssistantPage(`明细 · ${byYear ? `${year}年` : formatMonth(month)}${filtered ? ' · 已筛选' : ''}`, () =>
     transactionsPageData({
-      month,
+      scope: byYear ? year : month,
       filter,
       summary: summarize(filtered ? visible : transactions),
       totalCount: transactions.length,
@@ -91,7 +105,7 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
     body = (
       <div className="empty-state">
         <NotebookPen size={40} aria-hidden="true" />
-        <p className="t-body-m text-secondary">这个月还没有记录，记下第一笔吧。</p>
+        <p className="t-body-m text-secondary">{byYear ? '这一年' : '这个月'}还没有记录，记下第一笔吧。</p>
         <Button variant="primary" onClick={onQuickAdd}>
           记一笔
         </Button>
@@ -123,12 +137,16 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   return (
     <div className={`page ${wide && selected ? 'page-with-panel' : ''}`}>
       <div className="page-main">
-        <PageHeader title="明细" actions={<MonthSwitcher month={month} onChange={setMonth} />} />
+        <PageHeader
+          title="明细"
+          actions={<MonthSwitcher month={month} onChange={setMonth} unit={unit} onUnitChange={setUnit} />}
+        />
         <MonthSummary
           summary={summarize(isFilterEmpty(filter) ? transactions : visible)}
           filtered={!isFilterEmpty(filter)}
+          byYear={byYear}
           budget={isFilterEmpty(filter) ? totalBudget : undefined}
-          daysLeft={daysLeftInMonth(month, today())}
+          daysLeft={byYear ? undefined : daysLeftInMonth(month, today())}
         />
         {transactions.length > 0 && (
           <FilterBar

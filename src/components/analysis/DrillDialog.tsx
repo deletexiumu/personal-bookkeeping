@@ -4,7 +4,7 @@ import { db } from '../../db'
 import { deleteTransaction, restoreTransactions, summarize } from '../../db/transactions'
 import { matchDrill, transactionsHref, type Drill } from '../../lib/analysis'
 import { formatCents } from '../../lib/money'
-import { monthOfPeriod } from '../../lib/period'
+import { listScopeOfPeriod } from '../../lib/period'
 import type { Account, Category, Transaction } from '../../types'
 import { signedAmount, titleOf, type Lookup } from '../transactions/display'
 import { MerchantTagEditor } from '../tags/MerchantTagEditor'
@@ -24,14 +24,14 @@ interface Props {
   onClose: () => void
 }
 
-/** 图表下钻：列出对应的流水，可直接查看 / 编辑 / 删除；只在一个月内时可跳到明细页继续筛选 */
+/** 图表下钻：列出对应的流水，可直接查看 / 编辑 / 删除；在一个月或一年内时可跳到明细页（按月 / 按年）继续筛选 */
 export function DrillDialog({ drill, rows, categories, accounts, lookup, onClose }: Props) {
   const toast = useToast()
   const [selectedId, setSelectedId] = useState<number>()
   const items = useMemo(() => rows.filter((t) => matchDrill(t, drill, lookup.tags)), [rows, drill, lookup])
   const selected = items.find((t) => t.id === selectedId)
   const summary = summarize(items)
-  const month = monthOfPeriod({ kind: 'custom', start: drill.start, end: drill.end })
+  const scope = listScopeOfPeriod(drill)
   const back = useCallback(() => setSelectedId(undefined), [])
 
   const handleDelete = useCallback(
@@ -87,8 +87,8 @@ export function DrillDialog({ drill, rows, categories, accounts, lookup, onClose
             onDelete={(t) => void handleDelete(t)}
           />
         )}
-        {month && items.length > 0 && !drill.noLink && (
-          <a className="btn btn-secondary btn-md btn-block" href={transactionsHref(month, drill)}>
+        {scope && items.length > 0 && !drill.noLink && (
+          <a className="btn btn-secondary btn-md btn-block" href={transactionsHref(scope, drill)}>
             <ExternalLink size={16} aria-hidden="true" />
             在明细页中筛选
           </a>
