@@ -1,24 +1,25 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { today } from '../../lib/date'
-import type { AnalysisView } from '../../lib/analysis'
+import type { AnalysisMode } from '../../lib/analysis'
 import { customPeriod, PERIOD_LABELS, periodLabel, periodOf, shiftPeriod, type Period, type PeriodKind } from '../../lib/period'
 import { IconButton } from '../ui/Button'
 
 interface Props {
   period: Period
   onPeriodChange: (period: Period) => void
-  type: AnalysisView
-  onTypeChange: (type: AnalysisView) => void
+  type: AnalysisMode
+  onTypeChange: (type: AnalysisMode) => void
 }
 
 const KINDS: PeriodKind[] = ['week', 'month', 'year', 'custom']
-const TYPES: { value: AnalysisView; label: string }[] = [
+const TYPES: { value: AnalysisMode; label: string }[] = [
   { value: 'expense', label: '支出' },
   { value: 'income', label: '收入' },
   { value: 'all', label: '合计' },
+  { value: 'plan', label: '预算' },
 ]
 
-/** 分析页的筛选行：区间粒度、前后切换（或起止日期）、看支出、收入还是收支合计 */
+/** 分析页的筛选行：区间粒度、前后切换（或起止日期）、看支出、收入、收支合计，还是预算与实际对比 */
 export function PeriodBar({ period, onPeriodChange, type, onTypeChange }: Props) {
   function changeKind(kind: PeriodKind) {
     if (kind === period.kind) return

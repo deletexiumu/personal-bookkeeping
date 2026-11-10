@@ -6,6 +6,7 @@ import { DrillDialog } from '../components/analysis/DrillDialog'
 import { KeywordCard } from '../components/analysis/KeywordCard'
 import { KpiRow } from '../components/analysis/KpiRow'
 import { MerchantNetList } from '../components/analysis/MerchantNetList'
+import { PlanAnalysis } from '../components/analysis/PlanAnalysis'
 import { PeriodBar } from '../components/analysis/PeriodBar'
 import { RankedBars } from '../components/analysis/RankedBars'
 import { TrendChart } from '../components/analysis/TrendChart'
@@ -17,6 +18,9 @@ import { Button, IconButton } from '../components/ui/Button'
 import { useToast } from '../components/ui/toast-context'
 import { db } from '../db'
 import { listBudgets } from '../db/budgets'
+import { loadOccurrences } from '../db/plans'
+import { matchPlanFilter } from '../lib/planAnalysis'
+import type { PlanOccurrence } from '../lib/plans'
 import { listByMonth, listByRange } from '../db/transactions'
 import {
   categoryShares,
@@ -31,6 +35,7 @@ import {
   tagNet,
   tagShares,
   trendSeries,
+  type AnalysisMode,
   type AnalysisView,
   type Drill,
   type ShareItem,
@@ -92,7 +97,9 @@ export function AnalysisPage({ categories, accounts }: Props) {
   const toast = useToast()
   const todayDate = today()
   const [period, setPeriod] = useState<Period>(() => periodOf('month', todayDate))
-  const [view, setView] = useState<AnalysisView>('expense')
+  const [mode, setMode] = useState<AnalysisMode>('expense')
+  const planMode = mode === 'plan'
+  const view: AnalysisView = planMode ? 'expense' : mode
   const [keywordInput, setKeywordInput] = useState('')
   const keywords = useMemo(() => parseKeywords(keywordInput), [keywordInput])
   const [tagFilter, setTagFilter] = useState<string>()
@@ -106,6 +113,15 @@ export function AnalysisPage({ categories, accounts }: Props) {
   const budgetRows = useLiveQuery(() => listByMonth(db, budgetMonth), [budgetMonth], [])
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
   const lookup = useMemo(() => makeLookup(categories, accounts, resolve), [categories, accounts, resolve])
+  const allOccurrences = useLiveQuery(
+    () => loadOccurrences(db, period.start, period.end, todayDate),
+    [period.start, period.end, todayDate],
+    [] as PlanOccurrence[],
+  )
+  const occurrences = useMemo(
+    () => allOccurrences.filter((o) => matchPlanFilter(o.plan, keywords, tagFilter, UNTAGGED)),
+    [allOccurrences, keywords, tagFilter],
+  )
 
   const stats = periodStats(rows)
   const previousStats = periodStats(previousRows)
@@ -188,7 +204,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
       },
     })
 
-  const viewLabel = { expense: '支出', income: '收入', all: '合计' }[view]
+  const viewLabel = { expense: '支出', income: '收入', all: '合计', plan: '预算对比' }[mode]
   useAssistantPage(`分析 · ${label} · ${viewLabel}${keywordLabel}`, () =>
     analysisPageData({
       period: { start: period.start, end: period.end, label },
@@ -206,6 +222,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
       tags: { type: tagView, items: tagItems },
       tagNets: all ? tagNets : undefined,
       points,
+      plans: occurrences,
     }),
   )
 
@@ -255,7 +272,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
           </Button>
         }
       />
-      <PeriodBar period={period} onPeriodChange={setPeriod} type={view} onTypeChange={setView} />
+      <PeriodBar period={period} onPeriodChange={setPeriod} type={mode} onTypeChange={setMode} />
       <div className="analysis-filters">
         <label className="search-field analysis-search" role="search">
           <Search size={16} aria-hidden="true" className="text-tertiary" />
@@ -293,6 +310,19 @@ export function AnalysisPage({ categories, accounts }: Props) {
           ))}
         </select>
       </div>
+      {planMode ? (
+        <PlanAnalysis
+          label={`${label}${keywordLabel}`}
+          start={period.start}
+          end={period.end}
+          buckets={buckets}
+          rows={rows}
+          occurrences={occurrences}
+          categories={categories}
+          onDrill={(d) => setDrill({ source: 'period', drill: { ...d, tag: tagDrill } })}
+        />
+      ) : (
+        <>
       {keywords.length > 0 && stats.count > 0 && (
         <KeywordCard
           keywords={keywords}
@@ -407,6 +437,8 @@ export function AnalysisPage({ categories, accounts }: Props) {
             )}
           </div>
         </div>
+      )}
+        </>
       )}
 
       {drill && (

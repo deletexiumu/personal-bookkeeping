@@ -99,6 +99,9 @@ export function niceTicks(max: number, count = 4): number[] {
 /** 分析页的口径：只看支出、只看收入，或收支合计 */
 export type AnalysisView = CategoryType | 'all'
 
+/** 分析页口径：支出、收入、合计，或预算账单与实际对比 */
+export type AnalysisMode = AnalysisView | 'plan'
+
 /** 构成 / 排行中的一项 */
 export interface ShareItem {
   /** 分类 ID 或商户名，用于下钻 */
@@ -315,6 +318,8 @@ export interface Drill {
   query?: string
   /** 明细页复现不了这组筛选（如多个关键字），不提供跳转 */
   noLink?: boolean
+  /** 预算对比下钻：in 关联了预算的，out 没关联的，其余为某条预算的 uid（关联了它的各期） */
+  plan?: string
 }
 
 export function matchDrill(t: Transaction, drill: Drill, resolveTags: TagResolver = ownTagsOnly): boolean {
@@ -326,6 +331,9 @@ export function matchDrill(t: Transaction, drill: Drill, resolveTags: TagResolve
   if (drill.merchant !== undefined && merchantOf(t) !== drill.merchant) return false
   if (drill.tag === null && resolveTags(t).length > 0) return false
   if (typeof drill.tag === 'string' && !resolveTags(t).includes(drill.tag)) return false
+  if (drill.plan === 'in' && !t.planRef) return false
+  if (drill.plan === 'out' && t.planRef) return false
+  if (drill.plan && drill.plan !== 'in' && drill.plan !== 'out' && !t.planRef?.startsWith(`${drill.plan}@`)) return false
   return true
 }
 

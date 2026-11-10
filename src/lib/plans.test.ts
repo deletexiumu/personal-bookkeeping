@@ -85,7 +85,7 @@ describe('展开各期', () => {
       ['2026-10-15', 'done', 450000, 450000],
       ['2026-11-15', 'pending', 460000, 0],
     ])
-    expect(planTotals(list, 'expense')).toMatchObject({ planned: 1360000, actual: 450000, open: 910000, done: 1, overdue: 1, skipped: 1 })
+    expect(planTotals(list, 'expense')).toMatchObject({ planned: 1360000, actual: 450000, open: 910000, pendingAmount: 460000, donePlanned: 450000, done: 1, overdue: 1, skipped: 1 })
   })
 
   it('已不在规则上的期（改过日期）只要有流水对应仍列出', () => {
