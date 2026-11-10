@@ -6,6 +6,7 @@ import {
   expandPlans,
   matchPlan,
   nextOccurrence,
+  nextPeriodDate,
   occurrenceDates,
   parsePlanRef,
   planTotals,
@@ -104,6 +105,22 @@ describe('展开各期', () => {
     expect(repeatText(plan({ repeat: 'weekly', interval: 2, startDate: '2026-11-11' }))).toBe('每 2 周 · 周三')
     expect(repeatText(plan({ repeat: 'none', startDate: '2026-11-11' }))).toBe('2026-11-11 一次')
     expect(parsePlanRef('a-b@2026-11-15')).toEqual({ uid: 'a-b', date: '2026-11-15' })
+  })
+})
+
+describe('下一期的日期', () => {
+  it('一次性的预算按下个月同一天，没有这一天取月末', () => {
+    const once = plan({ repeat: 'none', startDate: '2026-11-15' })
+    expect(nextPeriodDate(once, '2026-11-15')).toBe('2026-12-15')
+    expect(nextPeriodDate(plan({ repeat: 'none', startDate: '2026-12-20' }), '2026-12-20')).toBe('2027-01-20')
+    expect(nextPeriodDate(plan({ repeat: 'none', startDate: '2027-01-31' }), '2027-01-31')).toBe('2027-02-28')
+  })
+
+  it('周期预算按自己的周期和间隔', () => {
+    expect(nextPeriodDate(plan({ repeat: 'weekly', interval: 2, startDate: '2026-11-04' }), '2026-11-18')).toBe('2026-12-02')
+    expect(nextPeriodDate(plan({ repeat: 'monthly', startDate: '2026-01-31' }), '2026-02-28')).toBe('2026-03-31')
+    expect(nextPeriodDate(plan({ repeat: 'monthly', interval: 3, startDate: '2026-01-15' }), '2026-10-15')).toBe('2027-01-15')
+    expect(nextPeriodDate(plan({ repeat: 'yearly', startDate: '2026-12-01' }), '2026-12-01')).toBe('2027-12-01')
   })
 })
 

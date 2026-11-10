@@ -4,6 +4,8 @@ import { commitImport, revertImport } from './imports'
 import { BookkeepingDB } from './index'
 import {
   autoLinkTransaction,
+  copyOccurrence,
+  copyOccurrences,
   deletePlan,
   loadOccurrences,
   realizeOccurrence,
@@ -125,5 +127,42 @@ describe('从预算记一笔、改单期金额', () => {
     expect((await loadOccurrences(db, '2026-12-01', '2026-12-31', TODAY))[0].amount).toBe(480000)
     await setOccurrenceAmount(db, id, '2026-12-15', undefined)
     expect((await db.plans.get(id))!.overrides).toBeUndefined()
+  })
+})
+
+describe('复制到下一期', () => {
+  const once: PlanInput = { name: '车险', type: 'expense', amount: 320000, categoryId: 7, accountId: 2, repeat: 'none', startDate: '2026-11-20', keywords: ['平安'], tags: ['车'], window: 5 }
+
+  it('一次性的预算复制成下个月同一天的新预算，沿用这一期的金额和设置；重复复制不再建', async () => {
+    const { id } = await savePlan(db, once, undefined, TODAY)
+    await setOccurrenceAmount(db, id, '2026-11-20', 300000)
+    const [occ] = await loadOccurrences(db, '2026-11-01', '2026-11-30', TODAY)
+    const r = await copyOccurrence(db, occ, TODAY)
+    expect(r).toMatchObject({ date: '2026-12-20', id: expect.any(Number) })
+    const copy = (await db.plans.get((r as { id: number }).id))!
+    expect(copy).toMatchObject({ name: '车险', amount: 300000, categoryId: 7, accountId: 2, repeat: 'none', startDate: '2026-12-20', keywords: ['平安'], tags: ['车'], window: 5 })
+    expect(copy.uid).not.toBe(occ.plan.uid)
+    expect(copy.overrides).toBeUndefined()
+    expect(await copyOccurrence(db, occ, TODAY)).toEqual({ date: '2026-12-20', exists: true })
+    expect(await db.plans.count()).toBe(2)
+  })
+
+  it('周期预算的下一期已经排好，不重复建；整月复制只建缺的', async () => {
+    await savePlan(db, { ...rent, startDate: '2026-11-15' }, undefined, TODAY)
+    await savePlan(db, once, undefined, TODAY)
+    const { id: skippedId } = await savePlan(db, { ...once, name: '体检', startDate: '2026-11-25' }, undefined, TODAY)
+    await setOccurrenceSkipped(db, skippedId, '2026-11-25', true)
+    const [rentOcc] = await loadOccurrences(db, '2026-11-15', '2026-11-15', TODAY)
+    expect(await copyOccurrence(db, rentOcc, TODAY)).toEqual({ date: '2026-12-15', exists: true })
+
+    const { ids, existing } = await copyOccurrences(db, '2026-11-01', '2026-11-31', TODAY)
+    expect(ids).toHaveLength(1)
+    expect(existing).toBe(1)
+    const december = await loadOccurrences(db, '2026-12-01', '2026-12-31', TODAY)
+    expect(december.map((o) => [o.plan.name, o.date])).toEqual([
+      ['房租', '2026-12-15'],
+      ['车险', '2026-12-20'],
+    ])
+    expect(await copyOccurrences(db, '2026-11-01', '2026-11-31', TODAY)).toEqual({ ids: [], existing: 2 })
   })
 })

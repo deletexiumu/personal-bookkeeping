@@ -77,14 +77,33 @@ function StatusLine({ status, daysLeft }: { status: BudgetStatus; daysLeft?: num
 }
 
 type Tab = 'quota' | 'plans'
+const TAB_KEY = 'taozhubu:budget-tab'
+
+/** 链接里带 tab=plans 时进预算账单，否则回到上次看的那个标签 */
+function initialTab(): Tab {
+  if (window.location.hash.includes('tab=plans')) return 'plans'
+  try {
+    return localStorage.getItem(TAB_KEY) === 'plans' ? 'plans' : 'quota'
+  } catch {
+    return 'quota'
+  }
+}
 
 /**
  * 预算页两个标签：
  * - 月度额度（M03 / D02 预算执行）：本月总预算与分类预算，每月循环生效
- * - 预算账单：计划中的单笔 / 周期收支，导入或记一笔对上后转为实际（见 PlanPanel）
+ * - 预算账单：计划中的单笔 / 周期收支，按日历或列表看，导入或记一笔对上后转为实际（见 PlanPanel）
  */
 export function BudgetPage({ categories, accounts }: { categories: Category[]; accounts: Account[] }) {
-  const [tab, setTab] = useState<Tab>(() => (window.location.hash.includes('tab=plans') ? 'plans' : 'quota'))
+  const [tab, setTabState] = useState<Tab>(initialTab)
+  const setTab = (t: Tab) => {
+    setTabState(t)
+    try {
+      localStorage.setItem(TAB_KEY, t)
+    } catch {
+      // 存不了时只在本次生效
+    }
+  }
   const month = monthOf(today())
   return (
     <div className="page budget-page">
