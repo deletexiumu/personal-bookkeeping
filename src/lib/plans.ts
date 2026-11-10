@@ -334,6 +334,10 @@ export interface PlanTotals {
   actual: number
   /** 待发生（含逾期）的计划合计 */
   open: number
+  /** 其中还没到期（待发生）的计划合计；planned - pendingAmount 是到期了的计划 */
+  pendingAmount: number
+  /** 已实现各期的计划合计，和 actual 比差额 */
+  donePlanned: number
   done: number
   overdue: number
   pending: number
@@ -342,14 +346,17 @@ export interface PlanTotals {
 
 /** 某个方向（支出 / 收入）的各期汇总 */
 export function planTotals(occurrences: PlanOccurrence[], type: Plan['type']): PlanTotals {
-  const s: PlanTotals = { planned: 0, actual: 0, open: 0, done: 0, overdue: 0, pending: 0, skipped: 0 }
+  const s: PlanTotals = { planned: 0, actual: 0, open: 0, pendingAmount: 0, donePlanned: 0, done: 0, overdue: 0, pending: 0, skipped: 0 }
   for (const o of occurrences) {
     if (o.plan.type !== type) continue
     s[o.status]++
     if (o.status === 'skipped') continue
     s.planned += o.amount
-    if (o.status === 'done') s.actual += o.actual
-    else s.open += o.amount
+    if (o.status === 'done') {
+      s.actual += o.actual
+      s.donePlanned += o.amount
+    } else s.open += o.amount
+    if (o.status === 'pending') s.pendingAmount += o.amount
   }
   return s
 }

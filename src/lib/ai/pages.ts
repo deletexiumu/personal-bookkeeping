@@ -1,3 +1,4 @@
+import type { PlanOccurrence } from '../plans'
 import type { PeriodStats, ShareItem, MerchantNet, TrendPoint } from '../analysis'
 import { SOURCE_LABEL, UNTAGGED, type TransactionFilter } from '../filter'
 import type { Account, Category, Transaction } from '../../types'
@@ -74,9 +75,24 @@ export function analysisPageData(opts: {
   /** 合计口径下按标签的收支 */
   tagNets?: MerchantNet[]
   points: TrendPoint[]
+  /** 区间里的预算账单（计划中的收支）与实际对比 */
+  plans?: PlanOccurrence[]
 }): string {
   return JSON.stringify({
     page: '分析',
+    budgetPlans: opts.plans?.length
+      ? {
+          note: '预算账单是计划中的收支，不计入实际；done 已实现（对上了实际流水）、overdue 逾期未发生、pending 待发生、skipped 跳过',
+          items: opts.plans.slice(0, 60).map((o) => ({
+            name: o.plan.name,
+            type: o.plan.type === 'income' ? '收入' : '支出',
+            date: o.date,
+            planned: yuan(o.amount),
+            status: o.status,
+            actual: o.status === 'done' ? yuan(o.actual) : undefined,
+          })),
+        }
+      : undefined,
     period: opts.period,
     view: { expense: '支出', income: '收入', all: '收支合计' }[opts.view],
     keywords: opts.keywords.length ? opts.keywords : undefined,

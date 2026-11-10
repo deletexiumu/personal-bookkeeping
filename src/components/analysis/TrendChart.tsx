@@ -11,9 +11,12 @@ interface Props {
   series: CategoryType[]
   hint: string
   onDrill: (point: TrendPoint) => void
+  /** 改系列名称（预算对比把「计划 / 实际」放进收入 / 支出两个系列） */
+  labels?: Partial<Record<CategoryType, string>>
+  className?: string
 }
 
-const SERIES_LABEL: Record<CategoryType, string> = { income: '收入', expense: '支出' }
+const SERIES_NAMES: Record<CategoryType, string> = { income: '收入', expense: '支出' }
 
 /** 超过这么多根柱子时，横轴标签隔几个显示一个，避免挤在一起 */
 const MAX_X_LABELS = 12
@@ -36,7 +39,8 @@ function tooltipPosition(index: number, count: number) {
  * 收支趋势柱状图：细柱（≤ 24px、顶端 4px 圆角、组内 2px 间隔）+ 发丝网格线。
  * 每根柱子所在的整列都是点击 / 悬停 / 键盘焦点的目标，点击下钻到该时间段的流水；可切换为数据表。
  */
-export function TrendChart({ title, points, series, hint, onDrill }: Props) {
+export function TrendChart({ title, points, series, hint, onDrill, labels, className }: Props) {
+  const SERIES_LABEL = { ...SERIES_NAMES, ...labels }
   const [hover, setHover] = useState<number>()
   const [asTable, setAsTable] = useState(false)
   const max = Math.max(0, ...points.flatMap((p) => series.map((s) => p[s])))
@@ -46,7 +50,7 @@ export function TrendChart({ title, points, series, hint, onDrill }: Props) {
   const describe = (p: TrendPoint) => `${p.title}，${series.map((s) => `${SERIES_LABEL[s]} ${formatCents(p[s])}`).join('，')}`
 
   return (
-    <section className="card chart-card" aria-label={title}>
+    <section className={`card chart-card ${className ?? ''}`} aria-label={title}>
       <header className="chart-head">
         <div>
           <h2 className="t-title-s">{title}</h2>
