@@ -76,8 +76,11 @@ export const SOURCE_LABEL: Record<TransactionSource, string> = {
   rule: '规则',
 }
 
-/** 从明细页链接中读出月份和筛选条件，例如 #/transactions?month=2026-11&type=expense&category=1&q=星巴克&tag=游戏 */
-export function parseTransactionsHash(hash: string): { month?: string; filter: TransactionFilter } {
+/**
+ * 从明细页链接中读出月份（或整年）和筛选条件，
+ * 例如 #/transactions?month=2026-11&type=expense&category=1&q=星巴克&tag=游戏、#/transactions?year=2026&tag=房租
+ */
+export function parseTransactionsHash(hash: string): { month?: string; year?: string; filter: TransactionFilter } {
   const query = hash.split('?')[1]
   const filter: TransactionFilter = {}
   if (!query) return { filter }
@@ -93,5 +96,10 @@ export function parseTransactionsHash(hash: string): { month?: string; filter: T
   if (q) filter.query = q
   const tag = params.get('tag')?.trim()
   if (tag) filter.tag = tag
-  return { month: month && /^\d{4}-\d{2}$/.test(month) ? month : undefined, filter }
+  const year = params.get('year') ?? undefined
+  return {
+    month: month && /^\d{4}-\d{2}$/.test(month) ? month : undefined,
+    year: year && /^\d{4}$/.test(year) ? year : undefined,
+    filter,
+  }
 }

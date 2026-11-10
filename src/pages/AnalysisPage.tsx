@@ -20,22 +20,28 @@ import { listBudgets } from '../db/budgets'
 import { listByMonth, listByRange } from '../db/transactions'
 import {
   categoryShares,
+  changeRatio,
+  formatChange,
   matchKeywords,
+  matchTag,
   merchantNet,
   merchantTop,
   parseKeywords,
   periodStats,
+  tagNet,
   tagShares,
   trendSeries,
   type AnalysisView,
   type Drill,
   type ShareItem,
+  type TagNet,
   type TrendPoint,
 } from '../lib/analysis'
 import { useAssistantPage } from '../lib/ai/context'
 import { analysisPageData } from '../lib/ai/pages'
 import { monthOf, today } from '../lib/date'
-import { withEffectiveTags } from '../lib/tags'
+import { UNTAGGED } from '../lib/filter'
+import { withEffectiveTags, type TagResolver } from '../lib/tags'
 import { downloadText } from '../lib/download'
 import { csvFileName, transactionsToCsv } from '../lib/exportCsv'
 import { bucketsOf, COMPARE_LABELS, elapsedDays, periodLabel, periodOf, shiftPeriod, type Period } from '../lib/period'
@@ -51,11 +57,20 @@ const TYPE_LABEL: Record<CategoryType, string> = { expense: '支出', income: '�
 /** 超过这么多根柱子（按天的月视图、长自定义区间）时，趋势只画筛选行选中的方向 */
 const MAX_GROUPED_BUCKETS = 16
 
-/** 区间流水（再按关键字筛）；切换区间时 useLiveQuery 会在新数据到达前保留上一份结果，不会闪成空白 */
-function useRangeRows(start: string, end: string, keywords: string[]): Transaction[] {
+/** 区间流水（再按关键字、标签筛）；切换区间时 useLiveQuery 会在新数据到达前保留上一份结果，不会闪成空白 */
+function useRangeRows(start: string, end: string, keywords: string[], tag: string | undefined, resolve: TagResolver): Transaction[] {
   const rows = useLiveQuery(() => listByRange(db, start, end), [start, end], [])
-  return useMemo(() => (keywords.length > 0 ? rows.filter((t) => matchKeywords(t, keywords)) : rows), [rows, keywords])
+  return useMemo(
+    () => (keywords.length > 0 || tag ? rows.filter((t) => matchKeywords(t, keywords) && matchTag(t, tag, resolve)) : rows),
+    [rows, keywords, tag, resolve],
+  )
 }
+
+const tagIcon = (item: { tag?: string | null }) => (
+  <span className={`ranked-tag-icon ${item.tag === null ? 'is-untagged' : ''}`} aria-hidden="true">
+    #
+  </span>
+)
 
 function monthlyAverage(expense: number, period: Period, todayDate: string): number {
   const months = bucketsOf(period).filter((b) => b.start <= todayDate).length
@@ -71,6 +86,7 @@ function dailyAverage(expense: number, period: Period, todayDate: string): numbe
  * 分析页（M03 / D02）：筛选行（区间 + 口径）和关键字作用于下面所有内容。
  * KPI 与上一期对比；收支趋势、分类构成、商户排行、预算执行，点击任意图形下钻到对应流水。
  * 「合计」口径把同一商户的支出和收入放在一起看净额；关键字匹配商户或备注，多个叫法合并统计。
+ * 选了标签时整页只看该标签（单笔标签优先，没有时沿用商户标签）的收支，KPI、趋势、构成、商户都随之收窄。
  */
 export function AnalysisPage({ categories, accounts }: Props) {
   const toast = useToast()
@@ -79,15 +95,16 @@ export function AnalysisPage({ categories, accounts }: Props) {
   const [view, setView] = useState<AnalysisView>('expense')
   const [keywordInput, setKeywordInput] = useState('')
   const keywords = useMemo(() => parseKeywords(keywordInput), [keywordInput])
+  const [tagFilter, setTagFilter] = useState<string>()
   const [drill, setDrill] = useState<{ drill: Drill; source: 'period' | 'budget' }>()
+  const { tags, resolve } = useTags()
   const previous = shiftPeriod(period, -1)
-  const rows = useRangeRows(period.start, period.end, keywords)
-  const previousRows = useRangeRows(previous.start, previous.end, keywords)
+  const rows = useRangeRows(period.start, period.end, keywords, tagFilter, resolve)
+  const previousRows = useRangeRows(previous.start, previous.end, keywords, tagFilter, resolve)
   // 预算按月循环：显示区间结束（还没到时取今天）所在月份
   const budgetMonth = monthOf(period.end < todayDate ? period.end : period.start > todayDate ? period.start : todayDate)
   const budgetRows = useLiveQuery(() => listByMonth(db, budgetMonth), [budgetMonth], [])
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
-  const { resolve } = useTags()
   const lookup = useMemo(() => makeLookup(categories, accounts, resolve), [categories, accounts, resolve])
 
   const stats = periodStats(rows)
@@ -105,6 +122,12 @@ export function AnalysisPage({ categories, accounts }: Props) {
   const nets = useMemo(() => merchantNet(rows), [rows])
   const tagView: CategoryType = view === 'all' ? 'expense' : view
   const tagItems = useMemo(() => tagShares(rows, tagView, resolve), [rows, tagView, resolve])
+  const previousTagAmounts = useMemo(
+    () => new Map(tagShares(previousRows, tagView, resolve).map((item) => [item.key, item.amount])),
+    [previousRows, tagView, resolve],
+  )
+  const tagNets = useMemo(() => tagNet(rows, resolve), [rows, resolve])
+  const tagNames = useMemo(() => tags.map((t) => t.name), [tags])
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
 
   const all = view === 'all'
@@ -114,7 +137,10 @@ export function AnalysisPage({ categories, accounts }: Props) {
   // 关键字只有一个时，跳明细页可以带上它继续筛选
   const query = keywords.length === 1 ? keywords[0] : undefined
   const noLink = keywords.length > 1 || undefined
-  const keywordLabel = keywords.length > 0 ? `「${keywords.join(' / ')}」` : ''
+  // 选了标签时，下钻和跳明细页都带上它
+  const tagDrill = tagFilter === undefined ? undefined : tagFilter === UNTAGGED ? null : tagFilter
+  const tagLabel = tagFilter === undefined ? '' : tagFilter === UNTAGGED ? '「未打标签」' : `「#${tagFilter}」`
+  const keywordLabel = (keywords.length > 0 ? `「${keywords.join(' / ')}」` : '') + tagLabel
   const average = byMonth
     ? {
         label: '月均支出',
@@ -135,6 +161,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
         start: p.start,
         end: p.end,
         type: both ? undefined : (view as CategoryType),
+        tag: tagDrill,
         query,
         noLink,
       },
@@ -143,7 +170,22 @@ export function AnalysisPage({ categories, accounts }: Props) {
   const openMerchant = (name: string, type?: CategoryType) =>
     setDrill({
       source: 'period',
-      drill: { title: `${label} · ${name}`, start: period.start, end: period.end, type, merchant: name },
+      drill: { title: `${label}${tagLabel} · ${name}`, start: period.start, end: period.end, type, merchant: name, tag: tagDrill },
+    })
+
+  const openTag = (item: { name: string; tag?: string | null }, type?: CategoryType) =>
+    setDrill({
+      source: 'period',
+      drill: {
+        title: `${label}${keywordLabel} · ${item.name}`,
+        start: period.start,
+        end: period.end,
+        type,
+        tag: item.tag,
+        query,
+        // 明细页一次只能筛一个标签：选了标签又点了同时打着的另一个标签时，明细页复现不了
+        noLink: noLink || (tagDrill !== undefined && item.tag !== tagDrill) || undefined,
+      },
     })
 
   const viewLabel = { expense: '支出', income: '收入', all: '合计' }[view]
@@ -153,6 +195,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
       compareLabel: COMPARE_LABELS[period.kind],
       view,
       keywords,
+      tag: tagFilter === undefined ? undefined : tagFilter === UNTAGGED ? '未打标签' : tagFilter,
       current: stats,
       previous: previousStats,
       average,
@@ -161,6 +204,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
       merchants,
       nets,
       tags: { type: tagView, items: tagItems },
+      tagNets: all ? tagNets : undefined,
       points,
     }),
   )
@@ -190,6 +234,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
               end: period.end,
               type,
               categoryId: item.categoryId ?? null,
+              tag: tagDrill,
               query,
               noLink,
             },
@@ -211,26 +256,43 @@ export function AnalysisPage({ categories, accounts }: Props) {
         }
       />
       <PeriodBar period={period} onPeriodChange={setPeriod} type={view} onTypeChange={setView} />
-      <label className="search-field analysis-search" role="search">
-        <Search size={16} aria-hidden="true" className="text-tertiary" />
-        <input
-          type="search"
-          aria-label="按商户或备注关键字筛选，多个关键字用空格分隔，命中任一个即合并统计"
-          placeholder="商户 / 备注关键字，多个用空格分隔"
-          value={keywordInput}
-          onChange={(e) => setKeywordInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Escape') return
-            setKeywordInput('')
-            e.currentTarget.blur()
-          }}
-        />
-        {keywordInput && (
-          <IconButton label="清除关键字" onClick={() => setKeywordInput('')}>
-            <X size={16} />
-          </IconButton>
-        )}
-      </label>
+      <div className="analysis-filters">
+        <label className="search-field analysis-search" role="search">
+          <Search size={16} aria-hidden="true" className="text-tertiary" />
+          <input
+            type="search"
+            aria-label="按商户或备注关键字筛选，多个关键字用空格分隔，命中任一个即合并统计"
+            placeholder="商户 / 备注关键字，多个用空格分隔"
+            value={keywordInput}
+            onChange={(e) => setKeywordInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') return
+              setKeywordInput('')
+              e.currentTarget.blur()
+            }}
+          />
+          {keywordInput && (
+            <IconButton label="清除关键字" onClick={() => setKeywordInput('')}>
+              <X size={16} />
+            </IconButton>
+          )}
+        </label>
+        <select
+          className="filter-select analysis-tag-select"
+          aria-label="只看某个标签"
+          data-active={tagFilter ? '' : undefined}
+          value={tagFilter ?? ''}
+          onChange={(e) => setTagFilter(e.target.value || undefined)}
+        >
+          <option value="">全部标签</option>
+          <option value={UNTAGGED}>未打标签</option>
+          {tagNames.map((t) => (
+            <option key={t} value={t}>
+              #{t}
+            </option>
+          ))}
+        </select>
+      </div>
       {keywords.length > 0 && stats.count > 0 && (
         <KeywordCard
           keywords={keywords}
@@ -239,7 +301,7 @@ export function AnalysisPage({ categories, accounts }: Props) {
           onDrillAll={() =>
             setDrill({
               source: 'period',
-              drill: { title: `${label} · ${keywordLabel}`, start: period.start, end: period.end, query, noLink },
+              drill: { title: `${label} · ${keywordLabel}`, start: period.start, end: period.end, tag: tagDrill, query, noLink },
             })
           }
           onDrillName={(item) => openMerchant(item.name)}
@@ -250,12 +312,14 @@ export function AnalysisPage({ categories, accounts }: Props) {
       {stats.count === 0 ? (
         <div className="card empty-state">
           <ChartNoAxesColumn size={40} aria-hidden="true" />
-          {keywords.length > 0 ? (
+          {keywords.length > 0 || tagFilter ? (
             <>
               <p className="t-body-m text-secondary">
                 {label}没有匹配{keywordLabel}的收支
               </p>
-              <p className="t-body-s text-tertiary">关键字匹配商户和备注，换个叫法或多写几个试试。</p>
+              <p className="t-body-s text-tertiary">
+                {keywords.length > 0 ? '关键字匹配商户和备注，换个叫法或多写几个试试。' : '换个区间或标签试试。'}
+              </p>
             </>
           ) : (
             <>
@@ -298,6 +362,31 @@ export function AnalysisPage({ categories, accounts }: Props) {
           </div>
           <div className="analysis-col">
             {all ? (
+              <MerchantNetList<TagNet>
+                title="标签收支"
+                hint="同一标签的支出和收入合在一行，右侧为净额；单笔标签优先，没有时沿用商户标签"
+                items={tagNets}
+                limit={8}
+                empty={`${label}没有收支`}
+                icon={tagIcon}
+                onDrill={(item) => openTag(item)}
+              />
+            ) : (
+              <RankedBars
+                title={`${TYPE_LABEL[tagView]}标签`}
+                hint="单笔标签优先，没有时沿用商户标签；一笔多个标签时分别计入"
+                items={tagItems}
+                type={tagView}
+                empty={`${label}没有${TYPE_LABEL[tagView]}`}
+                icon={tagIcon}
+                extra={(item) => {
+                  const ratio = changeRatio(item.amount, previousTagAmounts.get(item.key) ?? 0)
+                  return ratio === null ? null : ` · ${COMPARE_LABELS[period.kind]} ${formatChange(ratio)}`
+                }}
+                onDrill={(item) => openTag(item, tagView)}
+              />
+            )}
+            {all ? (
               <MerchantNetList
                 title="商户收支"
                 hint="同一商户的支出和收入合在一行，右侧为净额"
@@ -316,28 +405,6 @@ export function AnalysisPage({ categories, accounts }: Props) {
                 onDrill={(item) => openMerchant(item.merchant ?? item.name, view)}
               />
             )}
-            <RankedBars
-              title={`${TYPE_LABEL[tagView]}标签`}
-              hint="单笔标签优先，没有时沿用商户标签；一笔多个标签时分别计入"
-              items={tagItems}
-              type={tagView}
-              empty={`${label}没有${TYPE_LABEL[tagView]}`}
-              icon={(item) => <span className={`ranked-tag-icon ${item.tag === null ? 'is-untagged' : ''}`} aria-hidden="true">#</span>}
-              onDrill={(item) =>
-                setDrill({
-                  source: 'period',
-                  drill: {
-                    title: `${label}${keywordLabel} · ${item.name}`,
-                    start: period.start,
-                    end: period.end,
-                    type: tagView,
-                    tag: item.tag,
-                    query,
-                    noLink,
-                  },
-                })
-              }
-            />
           </div>
         </div>
       )}

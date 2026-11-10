@@ -12,7 +12,9 @@ import {
   merchantTop,
   niceTicks,
   parseKeywords,
+  matchTag,
   periodStats,
+  tagNet,
   tagShares,
   transactionsHref,
   trendSeries,
@@ -24,6 +26,7 @@ import {
   customPeriod,
   daysBetween,
   elapsedDays,
+  listScopeOfPeriod,
   monthOfPeriod,
   periodLabel,
   periodOf,
@@ -278,5 +281,30 @@ describe('按标签统计', () => {
     expect(rows.filter((r) => matchDrill(r, { ...drill, tag: null }, resolve)).map((r) => r.id)).toEqual([3])
     expect(transactionsHref('2026-11', { tag: '游戏' })).toBe('#/transactions?month=2026-11&tag=%E6%B8%B8%E6%88%8F')
     expect(parseTransactionsHash(transactionsHref('2026-11', { tag: null })).filter).toEqual({ tag: '__untagged__' })
+  })
+
+  it('合计口径按标签合并收支，未打标签排最后，不含不计收支的', () => {
+    const items = tagNet(rows, resolve)
+    expect(items.map((i) => [i.name, i.expense, i.income, i.net, i.count, i.tag])).toEqual([
+      ['#游戏', 10000, 0, -10000, 2, '游戏'],
+      ['#礼物', 2000, 0, -2000, 1, '礼物'],
+      ['未打标签', 3000, 9000, 6000, 2, null],
+    ])
+  })
+
+  it('只看某个标签：按实际生效的标签，未打标签不含不计收支的', () => {
+    expect(rows.filter((r) => matchTag(r, '游戏', resolve)).map((r) => r.id)).toEqual([1, 2])
+    expect(rows.filter((r) => matchTag(r, '__untagged__', resolve)).map((r) => r.id)).toEqual([3, 4])
+    expect(rows.filter((r) => matchTag(r, undefined, resolve))).toHaveLength(5)
+  })
+
+  it('一年内的区间可以跳到按年的明细', () => {
+    expect(listScopeOfPeriod(periodOf('month', '2026-11-04'))).toBe('2026-11')
+    expect(listScopeOfPeriod(periodOf('year', '2026-11-04'))).toBe('2026')
+    expect(listScopeOfPeriod(customPeriod('2025-12-01', '2026-01-31'))).toBeUndefined()
+    const href = transactionsHref('2026', { type: 'expense', tag: '游戏' })
+    expect(href).toBe('#/transactions?year=2026&type=expense&tag=%E6%B8%B8%E6%88%8F')
+    expect(parseTransactionsHash(href)).toEqual({ month: undefined, year: '2026', filter: { type: 'expense', tag: '游戏' } })
+    expect(parseTransactionsHash('#/transactions?year=26').year).toBeUndefined()
   })
 })

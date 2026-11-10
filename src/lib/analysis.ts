@@ -150,6 +150,52 @@ export function tagShares(rows: Transaction[], type: CategoryType, resolve: TagR
   return items
 }
 
+/** 合计视图中一个标签的收支；tag 为 null 表示「未打标签」 */
+export interface TagNet extends MerchantNet {
+  tag: string | null
+}
+
+/**
+ * 按标签合并收入和支出，按收支总额从大到小，「未打标签」排在最后；不含转账和不计收支的。
+ * 一笔有多个标签时每个标签都计入。
+ */
+export function tagNet(rows: Transaction[], resolve: TagResolver): TagNet[] {
+  const groups = new Map<string, TagNet>()
+  let untagged: TagNet | undefined
+  for (const t of rows) {
+    const type = statType(t)
+    if (!type) continue
+    const tags = resolve(t)
+    const targets =
+      tags.length > 0
+        ? tags.map((tag) => {
+            const group = groups.get(tag) ?? { key: `tag:${tag}`, name: `#${tag}`, tag, income: 0, expense: 0, net: 0, count: 0 }
+            groups.set(tag, group)
+            return group
+          })
+        : [(untagged ??= { key: UNTAGGED, name: UNTAGGED_LABEL, tag: null, income: 0, expense: 0, net: 0, count: 0 })]
+    for (const group of targets) {
+      group[type] += t.amount
+      group.net = group.income - group.expense
+      group.count++
+    }
+  }
+  const items = [...groups.values()].sort(
+    (a, b) => b.income + b.expense - (a.income + a.expense) || b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'),
+  )
+  return untagged ? [...items, untagged] : items
+}
+
+/**
+ * 是否属于分析页选中的标签：tag 为标签名时按实际生效的标签（含商户标签）；
+ * 为 UNTAGGED 时只算还没有标签的收支（转账和不计收支的不算）；不传时都算
+ */
+export function matchTag(t: Transaction, tag: string | undefined, resolve: TagResolver): boolean {
+  if (!tag) return true
+  if (tag === UNTAGGED) return !!statType(t) && resolve(t).length === 0
+  return resolve(t).includes(tag)
+}
+
 /** 按分类汇总某个方向的金额，从大到小 */
 export function categoryShares(rows: Transaction[], categories: Category[], type: CategoryType): ShareItem[] {
   const names = new Map(categories.map((c) => [c.id, c.name]))
@@ -283,12 +329,15 @@ export function matchDrill(t: Transaction, drill: Drill, resolveTags: TagResolve
   return true
 }
 
-/** 明细页带筛选条件的链接，例如 #/transactions?month=2026-11&type=expense&category=1 */
+/**
+ * 明细页带筛选条件的链接，例如 #/transactions?month=2026-11&type=expense&category=1；
+ * scope 为 'YYYY-MM' 时按月，为 'YYYY' 时按年（#/transactions?year=2026&tag=房租）
+ */
 export function transactionsHref(
-  month: string,
+  scope: string,
   drill: Pick<Drill, 'type' | 'categoryId' | 'merchant' | 'query' | 'tag'>,
 ): string {
-  const params = new URLSearchParams({ month })
+  const params = new URLSearchParams(scope.length === 4 ? { year: scope } : { month: scope })
   if (drill.type) params.set('type', drill.type)
   if (typeof drill.categoryId === 'number') params.set('category', String(drill.categoryId))
   if (drill.tag !== undefined) params.set('tag', drill.tag ?? UNTAGGED)

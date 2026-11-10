@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { db } from './db'
+import { setMerchantTags } from './db/tags'
 import { addTransaction } from './db/transactions'
 import { shiftMonth, today } from './lib/date'
 import { makeXlsx } from './lib/import/testZip'
@@ -193,6 +194,32 @@ describe('App', () => {
       await user.selectOptions(screen.getByRole('combobox', { name: '类型' }), '收入')
       expect(screen.getByText('没有符合条件的记录')).toBeInTheDocument()
     })
+
+    it('切到按年查看整年的流水，切回按月回到原来的月份', async () => {
+      await seed()
+      const date = today()
+      const year = date.slice(0, 4)
+      const otherMonth = date.slice(5, 7) === '01' ? `${year}-12-01` : `${year}-01-15`
+      await addTransaction(db, { type: 'expense', amount: 5000, categoryId: 1, accountId: 4, date: otherMonth, note: '年初聚餐' })
+      const user = userEvent.setup()
+      render(<App />)
+      await screen.findByRole('button', { name: '餐饮 -¥32.00，查看详情' })
+      expect(screen.getByText('共 3 笔')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('radio', { name: '年' }))
+      expect(await screen.findByText('共 4 笔')).toBeInTheDocument()
+      expect(screen.getByText(`${Number(year)}年`)).toBeInTheDocument()
+      expect(within(screen.getByRole('region', { name: '本年汇总' })).getByText('¥268.50')).toBeInTheDocument()
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: '上一年' }))
+      expect(await screen.findByText(`${Number(year) - 1}年`)).toBeInTheDocument()
+      expect(screen.getByText('这一年还没有记录，记下第一笔吧。')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '下一年' }))
+      await user.click(screen.getByRole('radio', { name: '月' }))
+      expect(await screen.findByText('共 3 笔')).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: '本月汇总' })).toBeInTheDocument()
+    })
   })
 
   describe('账户与分类', () => {
@@ -369,6 +396,52 @@ describe('App', () => {
       expect(within(chart).getAllByRole('button', { name: /查看明细$/ })).toHaveLength(12)
       expect(within(chart).getByRole('list', { name: '图例' })).toHaveTextContent('支出收入')
       expect(screen.getByText('月均支出')).toBeInTheDocument()
+    })
+
+    it('按标签：只看某个标签收窄整页，合计口径列出标签收支，下钻后跳到按年的明细', async () => {
+      await db.open()
+      const date = today()
+      const year = date.slice(0, 4)
+      await setMerchantTags(db, '万宝楼', ['游戏'])
+      await addTransaction(db, { type: 'expense', amount: 8000, categoryId: 5, accountId: 1, date, merchant: '万宝楼' })
+      await addTransaction(db, { type: 'income', amount: 3000, categoryId: 11, accountId: 1, date, merchant: '万宝楼', note: '出售装备' })
+      await addTransaction(db, { type: 'expense', amount: 200000, categoryId: 4, accountId: 1, date, note: '房租', tags: ['房租'] })
+      await addTransaction(db, { type: 'expense', amount: 1000, categoryId: 1, accountId: 1, date, note: '早饭' })
+      window.location.hash = '#/analysis'
+      const user = userEvent.setup()
+      render(<App />)
+      await user.click(await screen.findByRole('radio', { name: '年' }))
+
+      // 支出标签：房租、游戏，未打标签在最后
+      const tagCard = await screen.findByRole('region', { name: '支出标签' })
+      expect(within(tagCard).getAllByRole('button').map((b) => b.getAttribute('aria-label')?.split('，')[0])).toEqual([
+        '#房租',
+        '#游戏',
+        '未打标签',
+      ])
+
+      // 合计口径：同一标签的收入和支出合在一行
+      await user.click(screen.getByRole('radio', { name: '合计' }))
+      const nets = await screen.findByRole('region', { name: '标签收支' })
+      expect(within(nets).getByRole('button', { name: /^#游戏，支出 ¥80.00，收入 ¥30.00，净额 −¥50.00/ })).toBeInTheDocument()
+
+      // 只看游戏：KPI 只算游戏
+      await user.selectOptions(screen.getByRole('combobox', { name: '只看某个标签' }), '#游戏')
+      const kpis = screen.getByRole('region', { name: '区间概况' })
+      expect(await within(kpis).findByText('¥80.00')).toBeInTheDocument()
+      expect(within(kpis).getByText('¥30.00')).toBeInTheDocument()
+
+      // 下钻游戏，跳到按年的明细并带上标签
+      await user.click(within(screen.getByRole('region', { name: '标签收支' })).getByRole('button', { name: /^#游戏/ }))
+      const dialog = await screen.findByRole('dialog', { name: /#游戏$/ })
+      expect(within(dialog).getByText('共 2 笔 · 支出 ¥80.00 · 收入 ¥30.00')).toBeInTheDocument()
+      const link = within(dialog).getByRole('link', { name: '在明细页中筛选' })
+      expect(link).toHaveAttribute('href', `#/transactions?year=${year}&tag=%E6%B8%B8%E6%88%8F`)
+      await user.click(link)
+      expect(await screen.findByText(`${Number(year)}年`)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: '年' })).toHaveAttribute('aria-checked', 'true')
+      expect(await screen.findByText('共 2 笔')).toBeInTheDocument()
+      expect(screen.getByLabelText('标签')).toHaveValue('游戏')
     })
   })
 

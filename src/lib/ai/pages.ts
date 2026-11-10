@@ -18,7 +18,8 @@ function namesOf(categories: Category[], accounts: Account[]) {
 const MAX_ROWS = 80
 
 export function transactionsPageData(opts: {
-  month: string
+  /** 'YYYY-MM' 按月查看，'YYYY' 按年查看 */
+  scope: string
   filter: TransactionFilter
   summary: { income: number; expense: number; balance: number }
   totalCount: number
@@ -39,11 +40,11 @@ export function transactionsPageData(opts: {
   }
   return JSON.stringify({
     page: '明细',
-    month: opts.month,
+    [opts.scope.length === 4 ? 'year' : 'month']: opts.scope,
     filter: Object.values(filter).some(Boolean) ? filter : undefined,
     summary: { income: yuan(opts.summary.income), expense: yuan(opts.summary.expense), balance: yuan(opts.summary.balance) },
     monthlyBudget: opts.budget ? yuan(opts.budget) : undefined,
-    monthCount: opts.totalCount,
+    [opts.scope.length === 4 ? 'yearCount' : 'monthCount']: opts.totalCount,
     shownCount: opts.visible.length,
     transactions: opts.visible.slice(0, MAX_ROWS).map((t) => transactionView(t, n)),
     note: opts.visible.length > MAX_ROWS ? `只附带了前 ${MAX_ROWS} 条，更多请用工具查询` : undefined,
@@ -59,6 +60,8 @@ export function analysisPageData(opts: {
   compareLabel: string
   view: 'expense' | 'income' | 'all'
   keywords: string[]
+  /** 整页只看的标签（「未打标签」或标签名） */
+  tag?: string
   current: PeriodStats
   previous: PeriodStats
   average: { label: string; value: number }
@@ -68,6 +71,8 @@ export function analysisPageData(opts: {
   nets: MerchantNet[]
   /** 按标签汇总（支出口径或当前口径） */
   tags?: { type: 'expense' | 'income'; items: ShareItem[] }
+  /** 合计口径下按标签的收支 */
+  tagNets?: MerchantNet[]
   points: TrendPoint[]
 }): string {
   return JSON.stringify({
@@ -75,6 +80,7 @@ export function analysisPageData(opts: {
     period: opts.period,
     view: { expense: '支出', income: '收入', all: '收支合计' }[opts.view],
     keywords: opts.keywords.length ? opts.keywords : undefined,
+    onlyTag: opts.tag,
     stats: stats(opts.current),
     previousPeriod: { compare: opts.compareLabel, ...stats(opts.previous) },
     [opts.average.label]: yuan(opts.average.value),
@@ -86,6 +92,9 @@ export function analysisPageData(opts: {
         ? opts.nets.slice(0, 10).map((m) => ({ name: m.name, income: yuan(m.income), expense: yuan(m.expense), net: yuan(m.net), count: m.count }))
         : undefined,
     [opts.tags?.type === 'income' ? 'incomeByTag' : 'expenseByTag']: opts.tags ? shares(opts.tags.items, 12) : undefined,
+    netByTag: opts.tagNets
+      ?.slice(0, 12)
+      .map((m) => ({ name: m.name, income: yuan(m.income), expense: yuan(m.expense), net: yuan(m.net), count: m.count })),
     trend: opts.points.slice(0, 62).map((p) => ({ title: p.title, income: yuan(p.income), expense: yuan(p.expense) })),
   })
 }

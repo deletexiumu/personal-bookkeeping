@@ -1,22 +1,24 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { formatNet, type MerchantNet } from '../../lib/analysis'
 import { formatCents } from '../../lib/money'
 
-interface Props {
+interface Props<T extends MerchantNet> {
   title: string
   hint: string
-  items: MerchantNet[]
+  items: T[]
   empty: string
   /** 默认显示前几个，其余折叠 */
   limit?: number
-  onDrill: (item: MerchantNet) => void
+  /** 行首图标；不传时显示名次 */
+  icon?: (item: T) => ReactNode
+  onDrill: (item: T) => void
 }
 
 /**
- * 合计视图的商户排行：同一商户的支出和收入放在一行，给出净额。
+ * 合计视图的商户（或标签）排行：同一商户的支出和收入放在一行，给出净额。
  * 横条长度按收支总额（相对第一名），支出段和收入段各用方向色；数字都以文字给出，整行可下钻。
  */
-export function MerchantNetList({ title, hint, items, empty, limit = 5, onDrill }: Props) {
+export function MerchantNetList<T extends MerchantNet>({ title, hint, items, empty, limit = 5, icon, onDrill }: Props<T>) {
   const [expanded, setExpanded] = useState(false)
   const max = items.reduce((m, item) => Math.max(m, item.income + item.expense), 0)
   const shown = expanded ? items : items.slice(0, limit)
@@ -41,7 +43,7 @@ export function MerchantNetList({ title, hint, items, empty, limit = 5, onDrill 
                   aria-label={`${item.name}，支出 ${formatCents(item.expense)}，收入 ${formatCents(item.income)}，净额 ${formatNet(item.net)}，${item.count} 笔，查看明细`}
                   onClick={() => onDrill(item)}
                 >
-                  <span className="ranked-index t-num-s text-tertiary">{i + 1}</span>
+                  {icon ? icon(item) : <span className="ranked-index t-num-s text-tertiary">{i + 1}</span>}
                   <span className="ranked-main">
                     <span className="ranked-line">
                       <span className="ranked-name t-body-m">{item.name}</span>
