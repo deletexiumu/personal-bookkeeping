@@ -10,3 +10,10 @@ export function diffText(o: Pick<PlanOccurrence, 'actual' | 'amount'>): string {
   if (d === 0) return '持平'
   return `${d > 0 ? '多' : '少'} ${formatCents(Math.abs(d))}`
 }
+
+/** 日历格子里的简短金额：不带 ¥、千分位和小数，过万用「万」 */
+export function compactCents(cents: number): string {
+  const yuan = cents / 100
+  if (yuan >= 10000) return `${(yuan / 10000).toFixed(yuan >= 100000 ? 0 : 1).replace(/\.0$/, '')}万`
+  return String(Math.round(yuan))
+}

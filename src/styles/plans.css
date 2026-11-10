@@ -118,3 +118,223 @@
 .tx-detail-plan {
   margin: 0;
 }
+
+/* ---------- 明细里的预算：虚线行、灰色金额 ---------- */
+.page-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.plan-row .tx-open {
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--bg-subtle) 6px 7px);
+}
+
+.tx-list .plan-row {
+  outline: 1px dashed var(--border-strong, var(--text-tertiary));
+  outline-offset: -4px;
+  border-radius: var(--radius-md);
+}
+
+.tx-list .plan-row + .tx-row,
+.tx-list .tx-row + .plan-row {
+  border-top-color: transparent;
+}
+
+.plan-row .cat-icon {
+  opacity: 0.6;
+}
+
+.plan-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plan-amount {
+  color: var(--text-tertiary);
+}
+
+.plan-row[data-status='overdue'] {
+  outline-color: var(--semantic-warning);
+}
+
+.plan-row[data-status='overdue'] .plan-amount {
+  color: var(--semantic-warning);
+}
+
+tr.plan-row td {
+  border-top: 1px dashed var(--border-default);
+  border-bottom: 1px dashed var(--border-default);
+  color: var(--text-secondary);
+}
+
+tr.plan-row {
+  cursor: pointer;
+}
+
+tr.plan-row[data-status='overdue'] td {
+  border-color: var(--semantic-warning);
+}
+
+.plan-occ-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.plan-occ-actions {
+  flex-wrap: wrap;
+}
+
+/* 明细汇总下的预算账单一行 */
+.plan-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  color: inherit;
+  text-decoration: none;
+  border-style: dashed;
+}
+
+.plan-strip:hover {
+  border-color: var(--brand-primary);
+}
+
+.plan-strip svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.plan-strip-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+}
+
+/* ---------- 日历视图 ---------- */
+.month-calendar {
+  padding: var(--space-3);
+}
+
+.cal-week,
+.cal-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.cal-week {
+  text-align: center;
+  padding-bottom: var(--space-2);
+}
+
+.cal-day {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-height: 76px;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-day-empty {
+  background: transparent;
+  cursor: default;
+}
+
+.cal-day:hover {
+  border-color: var(--border-default);
+}
+
+.cal-day[aria-selected='true'] {
+  border-color: var(--brand-primary);
+  background: var(--bg-surface);
+}
+
+.cal-day[data-today] .cal-day-num {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.cal-day-num {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+}
+
+.cal-done {
+  color: var(--semantic-income);
+}
+
+.cal-amount,
+.cal-plan {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cal-plan {
+  justify-self: start;
+  max-width: 100%;
+  padding: 0 4px;
+  border: 1px dashed var(--text-tertiary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.cal-plan.is-overdue {
+  border-color: var(--semantic-warning);
+  color: var(--semantic-warning);
+}
+
+.cal-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .month-calendar {
+    padding: var(--space-2);
+  }
+
+  .cal-day {
+    min-height: 60px;
+    padding: 2px 3px;
+  }
+
+  .cal-amount,
+  .cal-plan {
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .cal-plan {
+    padding: 0 2px;
+  }
+
+  .cal-plan-prefix {
+    display: none;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+  }
+
+  .page-header h1 {
+    white-space: nowrap;
+  }
+}
