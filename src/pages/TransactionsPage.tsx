@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarDays, NotebookPen, SearchX } from 'lucide-react'
+import { CalendarDays, NotebookPen, Plus, SearchX } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useMediaQuery, WIDE_QUERY } from '../app/useMediaQuery'
 import { PageHeader } from '../components/layout/AppShell'
@@ -7,6 +7,8 @@ import { makeLookup, signedAmount, titleOf } from '../components/transactions/di
 import { FilterBar } from '../components/transactions/FilterBar'
 import { MonthCalendar } from '../components/transactions/MonthCalendar'
 import { MonthSummary } from '../components/transactions/MonthSummary'
+import { dayText } from '../components/plans/display'
+import { PlanForm } from '../components/plans/PlanForm'
 import { PlanOccurrenceDialog } from '../components/plans/PlanOccurrenceDialog'
 import { PlanStrip } from '../components/plans/PlanStrip'
 import { Segmented } from '../components/ui/Segmented'
@@ -29,7 +31,7 @@ import { transactionsPageData } from '../lib/ai/pages'
 import { formatMonth, monthOf, today } from '../lib/date'
 import { withEffectiveTags } from '../lib/tags'
 import { filterTransactions, isFilterEmpty, parseTransactionsHash, type TransactionFilter } from '../lib/filter'
-import type { Account, Category, Transaction } from '../types'
+import type { Account, Category, Plan, Transaction } from '../types'
 
 interface Props {
   categories: Category[]
@@ -87,6 +89,8 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
   const [day, setDay] = useState<string>()
   const selectedDay = day && day.startsWith(month) ? day : today().startsWith(month) ? today() : undefined
   const [planOpen, setPlanOpen] = useState<PlanOccurrence>()
+  // 在日历选中的那天新建预算（date），或编辑点开的那条预算（plan）
+  const [planEdit, setPlanEdit] = useState<{ date: string } | { plan: Plan }>()
   const budgets = useLiveQuery(() => listBudgets(db), [], [])
   // 预算按月，按年查看时不显示
   const totalBudget = useMemo(
@@ -143,12 +147,19 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
     body = (
       <>
         <MonthCalendar month={month} transactions={visible} plans={filtered ? [] : occurrences} selected={selectedDay} onSelect={setDay} />
-        {listed.length + openPlans.length > 0 ? (
-          <TransactionList transactions={listed} lookup={lookup} onOpen={open} onDelete={onDelete} plans={openPlans} onOpenPlan={setPlanOpen} />
-        ) : (
+        <div className="cal-day-add">
           <p className="t-body-s text-tertiary cal-hint">
-            <CalendarDays size={16} aria-hidden="true" /> {selectedDay ? `${Number(selectedDay.slice(5, 7))}月${Number(selectedDay.slice(8))}日没有流水和预算` : '点日期查看当天的流水和预算'}
+            <CalendarDays size={16} aria-hidden="true" />{' '}
+            {!selectedDay ? '点日期查看当天的流水和预算' : listed.length + openPlans.length > 0 ? dayText(selectedDay) : `${dayText(selectedDay)}没有流水和预算`}
           </p>
+          {selectedDay && !filtered && (
+            <Button size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setPlanEdit({ date: selectedDay })}>
+              这天加预算
+            </Button>
+          )}
+        </div>
+        {listed.length + openPlans.length > 0 && (
+          <TransactionList transactions={listed} lookup={lookup} onOpen={open} onDelete={onDelete} plans={openPlans} onOpenPlan={setPlanOpen} />
         )}
       </>
     )
@@ -234,7 +245,28 @@ export function TransactionsPage({ categories, accounts, onQuickAdd }: Props) {
           <TransactionDetail key={selected.id} {...detailProps} variant="panel" />
         </aside>
       )}
-      {planOpen && <PlanOccurrenceDialog occurrence={planOpen} accounts={accounts} onClose={() => setPlanOpen(undefined)} />}
+      {planOpen && (
+        <PlanOccurrenceDialog
+          occurrence={planOpen}
+          accounts={accounts}
+          onClose={() => setPlanOpen(undefined)}
+          onEdit={(plan) => {
+            setPlanOpen(undefined)
+            setPlanEdit({ plan })
+          }}
+        />
+      )}
+      {planEdit && (
+        <Dialog open title={'plan' in planEdit ? '编辑预算账单' : `新建预算 · ${dayText(planEdit.date)}`} onClose={() => setPlanEdit(undefined)}>
+          <PlanForm
+            plan={'plan' in planEdit ? planEdit.plan : undefined}
+            draft={'date' in planEdit ? { startDate: planEdit.date, repeat: 'none' } : undefined}
+            categories={categories}
+            accounts={accounts}
+            onDone={() => setPlanEdit(undefined)}
+          />
+        </Dialog>
+      )}
       {detailProps && !wide && (
         <Dialog open title="流水详情" onClose={closeDetail}>
           <TransactionDetail key={selected.id} {...detailProps} variant="dialog" />

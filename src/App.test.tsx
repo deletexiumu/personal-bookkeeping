@@ -312,6 +312,39 @@ describe('App', () => {
     })
   })
 
+  describe('预算日历', () => {
+    it('在日历上点日期新建预算，点已有的预算复制到下一期', async () => {
+      window.location.hash = '#/budget?tab=plans'
+      const user = userEvent.setup()
+      render(<App />)
+      const month = today().slice(0, 7)
+      const m = Number(month.slice(5))
+      const next = shiftMonth(month, 1)
+
+      await user.click(await screen.findByRole('button', { name: `${m}月15日，新建预算` }))
+      const form = await screen.findByRole('dialog', { name: `新建预算 · ${m}月15日` })
+      await user.type(within(form).getByLabelText('名称'), '房租')
+      await user.type(within(form).getByLabelText('每期金额（元）'), '4500')
+      expect(within(form).getByLabelText('日期')).toHaveValue(`${month}-15`)
+      expect(within(form).getByLabelText('重复')).toHaveValue('none')
+      await user.click(within(form).getByRole('button', { name: '保存' }))
+
+      await user.click(await screen.findByRole('button', { name: /^预算 房租 -4500，/ }))
+      const dialog = await screen.findByRole('dialog', { name: '预算 · 房租' })
+      await user.click(await within(dialog).findByRole('button', { name: `复制到下一期（${Number(next.slice(5))}月15日）` }))
+      expect(await screen.findByText(`已把「房租」复制到 ${Number(next.slice(5))}月15日，¥4,500.00`)).toBeInTheDocument()
+      const plans = await db.plans.orderBy('startDate').toArray()
+      expect(plans.map((p) => [p.name, p.repeat, p.startDate, p.amount])).toEqual([
+        ['房租', 'none', `${month}-15`, 450000],
+        ['房租', 'none', `${next}-15`, 450000],
+      ])
+
+      // 下个月的日历上能看到复制出来的那条，再点开它时下一期还没有
+      await user.click(screen.getByRole('button', { name: '下个月' }))
+      expect(await screen.findByRole('button', { name: /^预算 房租 -4500，待发生/ })).toBeInTheDocument()
+    })
+  })
+
   describe('设置', () => {
     afterEach(() => {
       delete document.documentElement.dataset.theme

@@ -5,6 +5,8 @@ import {
   expandPlans,
   isOpen,
   MAX_PLAN_WINDOW,
+  nextPeriodDate,
+  occurrenceDates,
   parsePlanRef,
   plannable,
   planWindow,
@@ -233,4 +235,59 @@ export async function setOccurrenceAmount(db: BookkeepingDB, planId: number, dat
     else delete next.overrides
     await db.plans.put(next)
   })
+}
+
+export type CopyResult =
+  /** 新建了一条一次性的预算 */
+  | { date: string; id: number }
+  /** 那天已经有同名同方向的预算（周期预算自动排好的下一期，或之前复制过），没有再建 */
+  | { date: string; exists: true }
+
+/**
+ * 把某一期复制成下一期的预算：在下一期的日期（见 nextPeriodDate）新建一条一次性的预算，
+ * 名称、金额（取这一期的计划金额）、分类、账户、关键字、容差、备注、标签都沿用。
+ * 那天已经有同名同方向的预算时不重复建。
+ */
+export async function copyOccurrence(db: BookkeepingDB, o: Pick<PlanOccurrence, 'plan' | 'date' | 'amount'>, todayDate: string): Promise<CopyResult> {
+  const { plan } = o
+  const date = nextPeriodDate(plan, o.date)
+  if (await hasPlanOn(db, plan, date)) return { date, exists: true }
+  const input: PlanInput = {
+    name: plan.name,
+    type: plan.type,
+    amount: o.amount,
+    categoryId: plan.categoryId,
+    accountId: plan.accountId,
+    note: plan.note,
+    tags: plan.tags,
+    repeat: 'none',
+    startDate: date,
+    keywords: plan.keywords,
+    tolerance: plan.tolerance,
+    window: plan.window,
+  }
+  const { id } = await savePlan(db, input, undefined, todayDate)
+  return { date, id }
+}
+
+/** date 这天是否已经有同名同方向的预算（含跳过的期） */
+export async function hasPlanOn(db: BookkeepingDB, plan: Pick<Plan, 'name' | 'type'>, date: string): Promise<boolean> {
+  const plans = (await db.plans.toArray()).filter((p) => p.name === plan.name && p.type === plan.type)
+  return plans.some((p) => occurrenceDates(p, date, date).length > 0)
+}
+
+/**
+ * 把 [from, to] 里的各期（不含跳过的）都复制到各自的下一期，返回新建的预算 ID 和已有而跳过的条数。
+ * 周期预算的下一期本来就排好了，会算进 existing。
+ */
+export async function copyOccurrences(db: BookkeepingDB, from: string, to: string, todayDate: string): Promise<{ ids: number[]; existing: number }> {
+  const list = (await loadOccurrences(db, from, to, todayDate)).filter((o) => o.status !== 'skipped')
+  const ids: number[] = []
+  let existing = 0
+  for (const o of list) {
+    const r = await copyOccurrence(db, o, todayDate)
+    if ('id' in r) ids.push(r.id)
+    else existing++
+  }
+  return { ids, existing }
 }

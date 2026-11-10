@@ -107,6 +107,25 @@ export function occurrenceDates(plan: Pick<Plan, 'repeat' | 'interval' | 'startD
   return dates
 }
 
+/**
+ * 某一期的下一期日期：一次性的预算按下个月同一天（没有这一天取月末），周期预算按它自己的周期。
+ * 「复制到下一期」用。
+ */
+export function nextPeriodDate(plan: Pick<Plan, 'repeat' | 'interval' | 'startDate'>, date: string): string {
+  const step = Math.max(1, Math.floor(plan.interval ?? 1))
+  const month = date.slice(0, 7)
+  switch (plan.repeat) {
+    case 'weekly':
+      return shiftDate(date, 7 * step)
+    case 'monthly':
+      return dayIn(shiftMonth(month, step), Number(plan.startDate.slice(8, 10)))
+    case 'yearly':
+      return dayIn(shiftMonth(month, 12 * step), Number(plan.startDate.slice(8, 10)))
+    default:
+      return dayIn(shiftMonth(month, 1), Number(date.slice(8, 10)))
+  }
+}
+
 export function planRefOf(plan: Pick<Plan, 'uid'>, date: string): string {
   return `${plan.uid}@${date}`
 }

@@ -17,3 +17,8 @@ export function compactCents(cents: number): string {
   if (yuan >= 10000) return `${(yuan / 10000).toFixed(yuan >= 100000 ? 0 : 1).replace(/\.0$/, '')}万`
   return String(Math.round(yuan))
 }
+
+/** '2026-11-15' -> '11月15日' */
+export function dayText(date: string): string {
+  return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`
+}
