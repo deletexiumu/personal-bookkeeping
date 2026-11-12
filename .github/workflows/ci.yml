@@ -1,3 +1,10 @@
+# 「检查」和「识别改动范围」两个任务跑在哪种机器上，由仓库的 Actions 变量 CI_RUNS_ON 决定，值是 runs-on 的 JSON 写法：
+#   没设这个变量                         GitHub 托管的 ubuntu-latest
+#   ["self-hosted","linux","x64"]        自托管运行器
+# 其余任务固定在托管机器上：后端测试用了 services，镜像构建检查用了 Docker，自托管运行器的容器里都没有；
+# 桌面端编译检查依赖 rust-cache 的远端缓存。
+# 自托管运行器的依赖缓存留在本机磁盘上，setup-node 的远端缓存只在托管机器上启用。
+# 警告：自托管运行器只给私有仓库注册。仓库公开时不应设这个变量，否则这两个任务会一直排队。
 name: CI
 
 on:
@@ -19,14 +26,14 @@ permissions:
 jobs:
   check:
     name: 检查（lint / test / build）
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: pnpm
+          cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test
@@ -67,7 +74,7 @@ jobs:
 
   changes:
     name: 识别改动范围
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     outputs:
       desktop: ${{ steps.filter.outputs.desktop }}
       docker: ${{ steps.filter.outputs.docker }}
